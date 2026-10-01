@@ -1,6 +1,5 @@
 import streamlit as st
 import psycopg2
-from psycopg2.extras import RealDictCursor
 import pandas as pd
 from datetime import datetime
 import streamlit.components.v1 as components
@@ -78,7 +77,8 @@ DB_CONFIG = {
     "database": st.secrets["postgres"]["database"],
     "user": st.secrets["postgres"]["user"],
     "password": st.secrets["postgres"]["password"],
-    "port": st.secrets["postgres"]["port"]
+    "port": st.secrets["postgres"]["port"],
+    "sslmode": st.secrets["postgres"].get("sslmode", "require")
 }
 
 
@@ -191,6 +191,19 @@ def setup_database():
         )
     """)
 
+    # STOCK TABLE
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stock (
+            stock_id SERIAL PRIMARY KEY,
+            school_id INT NOT NULL
+                REFERENCES schools(school_id),
+            product_id INT NOT NULL
+                REFERENCES products(product_id),
+            quantity_brought INT NOT NULL,
+            date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     conn.commit()
     cursor.close()
     conn.close()
@@ -213,25 +226,31 @@ except Exception as e:
 # ============================================================
 
 def fetch_all(query, params=None):
+
     conn = get_connection()
 
     try:
+
         df = pd.read_sql_query(
             query,
             conn,
             params=params
         )
+
         return df
 
     finally:
+
         conn.close()
 
 
 def execute_query(query, params=None, fetch=False):
+
     conn = get_connection()
     cursor = conn.cursor()
 
     try:
+
         cursor.execute(query, params)
 
         result = None
@@ -244,15 +263,18 @@ def execute_query(query, params=None, fetch=False):
         return result
 
     except Exception:
+
         conn.rollback()
         raise
 
     finally:
+
         cursor.close()
         conn.close()
 
 
 def get_schools():
+
     return fetch_all("""
         SELECT school_id, school_name
         FROM schools
@@ -261,6 +283,7 @@ def get_schools():
 
 
 def get_categories(school_id):
+
     df = fetch_all("""
         SELECT DISTINCT category_name
         FROM school_product_prices
@@ -272,6 +295,7 @@ def get_categories(school_id):
 
 
 def get_products_for_category(school_id, category):
+
     return fetch_all("""
         SELECT
             p.product_id,
@@ -287,6 +311,7 @@ def get_products_for_category(school_id, category):
 
 
 def get_customer(customer_name, phone):
+
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -319,6 +344,7 @@ def get_customer(customer_name, phone):
         return customer_id
 
     finally:
+
         cursor.close()
         conn.close()
 
@@ -366,6 +392,7 @@ if menu == "New Sale":
     schools = get_schools()
 
     if schools.empty:
+
         st.warning("No schools have been added.")
         st.stop()
 
@@ -386,9 +413,11 @@ if menu == "New Sale":
     categories = get_categories(school_id)
 
     if not categories:
+
         st.warning(
             "No products have been assigned to this school yet."
         )
+
         st.stop()
 
     category = st.selectbox(
@@ -401,16 +430,19 @@ if menu == "New Sale":
     col1, col2, col3 = st.columns(3)
 
     with col1:
+
         customer_name = st.text_input(
             "Customer / Parent Name"
         )
 
     with col2:
+
         phone = st.text_input(
             "Phone Number"
         )
 
     with col3:
+
         student_class = st.text_input(
             "Class / Grade"
         )
@@ -423,16 +455,23 @@ if menu == "New Sale":
     )
 
     if products.empty:
+
         st.warning(
             "No products have been assigned to this category."
         )
+
         st.stop()
 
-    product_names = products["product_name"].tolist()
+    product_names = products[
+        "product_name"
+    ].tolist()
 
-    col1, col2, col3 = st.columns([3, 1, 1])
+    col1, col2, col3 = st.columns(
+        [3, 1, 1]
+    )
 
     with col1:
+
         selected_product = st.selectbox(
             "Product",
             product_names
@@ -451,6 +490,7 @@ if menu == "New Sale":
     )
 
     with col2:
+
         quantity = st.number_input(
             "Quantity",
             min_value=1,
@@ -459,6 +499,7 @@ if menu == "New Sale":
         )
 
     with col3:
+
         issued = st.checkbox(
             "Issued",
             value=True
@@ -469,12 +510,14 @@ if menu == "New Sale":
         line_total = unit_price * quantity
 
         st.session_state.cart.append({
+
             "product_id": product_id,
             "product": selected_product,
             "quantity": quantity,
             "unit_price": unit_price,
             "line_total": line_total,
             "issued": issued
+
         })
 
         st.success(
@@ -482,9 +525,7 @@ if menu == "New Sale":
         )
 
 
-    # --------------------------------------------------------
     # CART
-    # --------------------------------------------------------
 
     st.subheader("Current Sale")
 
@@ -529,7 +570,9 @@ if menu == "New Sale":
         )
 
         if st.button("Clear Cart"):
+
             st.session_state.cart = []
+
             st.rerun()
 
         st.subheader("Payment")
@@ -550,9 +593,11 @@ if menu == "New Sale":
         ):
 
             if not customer_name.strip():
+
                 st.error(
                     "Enter the customer / parent name."
                 )
+
                 st.stop()
 
             conn = get_connection()
@@ -617,6 +662,7 @@ if menu == "New Sale":
                 ]
 
                 st.session_state.last_receipt = {
+
                     "sale_id": sale_id,
                     "sale_date": sale_date,
                     "school": school_name,
@@ -627,6 +673,7 @@ if menu == "New Sale":
                     "payment": payment_method,
                     "items": receipt_items,
                     "total": total
+
                 }
 
                 st.session_state.cart = []
@@ -651,9 +698,7 @@ if menu == "New Sale":
                 conn.close()
 
 
-    # --------------------------------------------------------
     # PRINT RECEIPT
-    # --------------------------------------------------------
 
     if st.session_state.last_receipt:
 
@@ -685,8 +730,11 @@ if menu == "New Sale":
 
         receipt_html = f"""
         <!DOCTYPE html>
+
         <html>
+
         <head>
+
             <style>
 
                 body {{
@@ -743,12 +791,15 @@ if menu == "New Sale":
                 }}
 
                 @media print {{
+
                     .print {{
                         display: none;
                     }}
+
                 }}
 
             </style>
+
         </head>
 
         <body>
@@ -758,7 +809,9 @@ if menu == "New Sale":
             <button
                 class="print"
                 onclick="window.print()">
+
                 PRINT RECEIPT
+
             </button>
 
             <h1>UNIFORM SALES RECEIPT</h1>
@@ -794,11 +847,13 @@ if menu == "New Sale":
             <table>
 
                 <tr>
+
                     <th>Item</th>
                     <th>Qty</th>
                     <th>Unit Price</th>
                     <th>Amount</th>
                     <th>Status</th>
+
                 </tr>
 
                 {rows_html}
@@ -806,23 +861,30 @@ if menu == "New Sale":
             </table>
 
             <div class="total">
+
                 TOTAL PAID:
                 KES {receipt['total']:,.2f}
+
             </div>
 
             <p>
+
                 <strong>Legend:</strong>
                 Issued = item given to customer.
                 Not Issued = item pending availability.
+
             </p>
 
             <p style="text-align:center;">
+
                 Thank you for your business.
+
             </p>
 
         </div>
 
         </body>
+
         </html>
         """
 
@@ -840,6 +902,7 @@ if menu == "New Sale":
 elif menu == "Price Management":
 
     st.title("Price Management")
+
     st.caption(
         "Manage prices by school and category."
     )
@@ -862,7 +925,9 @@ elif menu == "Price Management":
 
     categories = get_categories(school_id)
 
-    category_options = categories + ["Create New Category"]
+    category_options = categories + [
+        "Create New Category"
+    ]
 
     category = st.selectbox(
         "Category",
@@ -882,15 +947,15 @@ elif menu == "Price Management":
     else:
 
         if not category:
+
             st.info(
                 "No categories available."
             )
+
             st.stop()
 
 
-    # --------------------------------------------------------
     # CURRENT PRICES
-    # --------------------------------------------------------
 
     prices = get_products_for_category(
         school_id,
@@ -908,7 +973,10 @@ elif menu == "Price Management":
             )
 
             with col1:
-                st.write(row["product_name"])
+
+                st.write(
+                    row["product_name"]
+                )
 
             with col2:
 
@@ -951,9 +1019,7 @@ elif menu == "Price Management":
         )
 
 
-    # --------------------------------------------------------
     # ADD PRODUCT
-    # --------------------------------------------------------
 
     st.divider()
 
@@ -1042,129 +1108,198 @@ elif menu == "Price Management":
 # ============================================================
 
 elif menu == "Stock Management":
-   st.header("📦 Stock Management")
 
-# Select school
-school_options = get_schools()
-stock_school = st.selectbox(
-    "Select School",
-    school_options,
-    key="stock_school"
-)
+    st.title("Stock Management")
 
-stock_school_id = stock_school[0]
-
-# Get products assigned to this school
-stock_products = fetch_all(
-    """
-    SELECT
-        spp.product_id,
-        p.product_name,
-        spp.price
-    FROM school_product_prices spp
-    JOIN products p ON spp.product_id = p.product_id
-    WHERE spp.school_id = %s
-    ORDER BY p.product_name
-    """,
-    (stock_school_id,)
-)
-
-if not stock_products:
-    st.warning("No products have been assigned to this school yet.")
-else:
-
-    st.subheader("Add Uniforms Brought In")
-
-    product_options = {
-        row[1]: row[0]
-        for row in stock_products
-    }
-
-    selected_product = st.selectbox(
-        "Uniform",
-        list(product_options.keys())
+    st.caption(
+        "Track uniforms brought in, sold and remaining."
     )
 
-    quantity_brought = st.number_input(
-        "Quantity Brought In",
-        min_value=1,
-        step=1
+    schools = get_schools()
+
+    if schools.empty:
+
+        st.warning(
+            "No schools have been added."
+        )
+
+        st.stop()
+
+    school_map = dict(
+        zip(
+            schools["school_name"],
+            schools["school_id"]
+        )
     )
 
-    if st.button("Add Stock"):
-        execute_query(
-            """
-            INSERT INTO stock
-            (school_id, product_id, quantity_brought)
-            VALUES (%s, %s, %s)
-            """,
-            (
-                stock_school_id,
-                product_options[selected_product],
-                quantity_brought
+    stock_school_name = st.selectbox(
+        "School",
+        list(school_map.keys()),
+        key="stock_school"
+    )
+
+    stock_school_id = school_map[
+        stock_school_name
+    ]
+
+    stock_products = fetch_all("""
+        SELECT DISTINCT
+            p.product_id,
+            p.product_name
+        FROM school_product_prices spp
+        JOIN products p
+            ON p.product_id = spp.product_id
+        WHERE spp.school_id = %s
+        ORDER BY p.product_name
+    """, (stock_school_id,))
+
+    if stock_products.empty:
+
+        st.warning(
+            "No products have been assigned to this school yet."
+        )
+
+    else:
+
+        st.subheader("Add Uniforms Brought In")
+
+        product_map = dict(
+            zip(
+                stock_products["product_name"],
+                stock_products["product_id"]
             )
         )
 
-        st.success("Stock added successfully!")
-        st.rerun()
-
-    st.subheader("Current Stock")
-
-    stock_data = fetch_all(
-        """
-        SELECT
-            p.product_name,
-            COALESCE(SUM(st.quantity_brought), 0) AS brought_in,
-            COALESCE(
-                (
-                    SELECT SUM(si.quantity)
-                    FROM sale_items si
-                    JOIN sales s ON si.sale_id = s.sale_id
-                    WHERE s.school_id = %s
-                    AND si.product_id = p.product_id
-                    AND si.issued = TRUE
-                ), 0
-            ) AS sold
-        FROM products p
-        LEFT JOIN stock st
-            ON st.product_id = p.product_id
-            AND st.school_id = %s
-        WHERE p.product_id IN (
-            SELECT product_id
-            FROM school_product_prices
-            WHERE school_id = %s
+        selected_product = st.selectbox(
+            "Uniform",
+            list(product_map.keys()),
+            key="stock_product"
         )
-        GROUP BY p.product_id, p.product_name
-        ORDER BY p.product_name
-        """,
-        (
+
+        quantity_brought = st.number_input(
+            "Quantity Brought In",
+            min_value=1,
+            value=1,
+            step=1,
+            key="quantity_brought"
+        )
+
+        if st.button(
+            "Add Stock",
+            key="add_stock"
+        ):
+
+            execute_query("""
+                INSERT INTO stock
+                (
+                    school_id,
+                    product_id,
+                    quantity_brought
+                )
+                VALUES (%s, %s, %s)
+            """, (
+                stock_school_id,
+                product_map[selected_product],
+                quantity_brought
+            ))
+
+            st.success(
+                f"{quantity_brought} {selected_product} added to stock."
+            )
+
+            st.rerun()
+
+
+        st.divider()
+
+        st.subheader("Current Stock")
+
+        stock_data = fetch_all("""
+            SELECT
+                p.product_id,
+                p.product_name,
+
+                COALESCE(
+                    (
+                        SELECT SUM(st.quantity_brought)
+                        FROM stock st
+                        WHERE st.school_id = %s
+                        AND st.product_id = p.product_id
+                    ),
+                    0
+                ) AS brought_in,
+
+                COALESCE(
+                    (
+                        SELECT SUM(si.quantity)
+                        FROM sale_items si
+                        JOIN sales s
+                            ON s.sale_id = si.sale_id
+                        WHERE s.school_id = %s
+                        AND si.product_id = p.product_id
+                        AND si.issued = TRUE
+                    ),
+                    0
+                ) AS sold
+
+            FROM products p
+
+            WHERE p.product_id IN (
+
+                SELECT DISTINCT product_id
+
+                FROM school_product_prices
+
+                WHERE school_id = %s
+
+            )
+
+            ORDER BY p.product_name
+        """, (
             stock_school_id,
             stock_school_id,
             stock_school_id
+        ))
+
+        stock_table = []
+
+        for _, row in stock_data.iterrows():
+
+            brought_in = int(
+                row["brought_in"]
+            )
+
+            sold = int(
+                row["sold"]
+            )
+
+            remaining = brought_in - sold
+
+            stock_table.append({
+
+                "Uniform":
+                    row["product_name"],
+
+                "Brought In":
+                    brought_in,
+
+                "Sold":
+                    sold,
+
+                "Remaining":
+                    remaining
+
+            })
+
+        stock_df = pd.DataFrame(
+            stock_table
         )
-    )
 
-    stock_table = []
-
-    for row in stock_data:
-        product_name = row[0]
-        brought_in = int(row[1])
-        sold = int(row[2])
-        remaining = brought_in - sold
-
-        stock_table.append({
-            "Uniform": product_name,
-            "Brought In": brought_in,
-            "Sold": sold,
-            "Remaining": remaining
-        })
-
-    st.dataframe(
-        pd.DataFrame(stock_table),
-        use_container_width=True,
-        hide_index=True
-    )
-     
+        st.dataframe(
+            stock_df,
+            use_container_width=True,
+            hide_index=True
+        )
 
 
 # ============================================================
@@ -1179,7 +1314,8 @@ elif menu == "Sales Overview":
         SELECT
             COUNT(*) AS total_sales,
             COALESCE(
-                SUM(total_amount), 0
+                SUM(total_amount),
+                0
             ) AS revenue
         FROM sales
     """)
@@ -1195,17 +1331,18 @@ elif menu == "Sales Overview":
     col1, col2 = st.columns(2)
 
     with col1:
+
         st.metric(
             "Total Sales",
             total_sales
         )
 
     with col2:
+
         st.metric(
             "Total Revenue",
             f"KES {revenue:,.2f}"
         )
-
 
     st.subheader("Daily Revenue")
 
