@@ -4,9 +4,10 @@ import pandas as pd
 from datetime import datetime
 import streamlit.components.v1 as components
 
-# ============================================================
-# PAGE
-# ============================================================
+
+# =========================================================
+# PAGE CONFIG
+# =========================================================
 
 st.set_page_config(
     page_title="Uniform Sales POS",
@@ -14,112 +15,153 @@ st.set_page_config(
     layout="wide"
 )
 
-# ============================================================
-# STYLE
-# ============================================================
+
+# =========================================================
+# STYLING
+# =========================================================
 
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #eef6ff;
-    }
 
-    [data-testid="stSidebar"] {
-        background-color: #102a43;
-    }
+.main {
+    background-color: #f4f8fc;
+}
 
-    [data-testid="stSidebar"] * {
-        color: white;
-    }
+.block-container {
+    padding-top: 1.5rem;
+}
 
-    h1, h2, h3 {
-        color: #102a43;
-    }
+h1, h2, h3 {
+    color: #102a43;
+}
 
-    .metric-card {
-        background: white;
-        padding: 18px;
-        border-radius: 12px;
-        border: 1px solid #d9e6f2;
-        margin-bottom: 10px;
-    }
+section[data-testid="stSidebar"] {
+    background-color: #102a43;
+}
 
-    .big-number {
-        font-size: 28px;
-        font-weight: bold;
-        color: #102a43;
-    }
+section[data-testid="stSidebar"] * {
+    color: white;
+}
 
-    .small-label {
-        color: #607d8b;
-        font-size: 14px;
-    }
+.stButton > button {
+    background-color: #f28c28;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+}
 
-    .profit {
-        color: #16803c;
-        font-weight: bold;
-    }
+.stButton > button:hover {
+    background-color: #d97706;
+    color: white;
+}
 
-    .loss {
-        color: #c62828;
-        font-weight: bold;
-    }
+.metric-card {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    text-align: center;
+}
+
+.receipt {
+    background: white;
+    padding: 25px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
+
+# =========================================================
 # DATABASE CONNECTION
-# ============================================================
+# =========================================================
 
 def get_connection():
-    cfg = st.secrets["postgres"]
-
     return psycopg2.connect(
-        host=cfg["host"],
-        port=cfg["port"],
-        database=cfg["database"],
-        user=cfg["user"],
-        password=cfg["password"],
-        sslmode=cfg.get("sslmode", "require")
+        host=st.secrets["postgres"]["host"],
+        port=st.secrets["postgres"]["port"],
+        database=st.secrets["postgres"]["database"],
+        user=st.secrets["postgres"]["user"],
+        password=st.secrets["postgres"]["password"],
+        sslmode=st.secrets["postgres"].get("sslmode", "require")
     )
 
 
-# ============================================================
+# =========================================================
 # DATABASE SETUP
-# ============================================================
+# =========================================================
 
 def setup_database():
 
     conn = get_connection()
     cur = conn.cursor()
 
-    # ---------------- SCHOOLS ----------------
+    # -----------------------------------------------------
+    # SCHOOLS
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS schools (
             school_id SERIAL PRIMARY KEY,
-            school_name VARCHAR(100) NOT NULL UNIQUE
+            school_name VARCHAR(100) NOT NULL
         );
     """)
 
-    # ---------------- PRODUCTS ----------------
+    # Add unique constraint safely
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'schools_school_name_unique'
+            ) THEN
+                ALTER TABLE schools
+                ADD CONSTRAINT schools_school_name_unique
+                UNIQUE (school_name);
+            END IF;
+        END $$;
+    """)
+
+    # -----------------------------------------------------
+    # PRODUCTS
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS products (
             product_id SERIAL PRIMARY KEY,
-            product_name VARCHAR(100) NOT NULL UNIQUE,
-            price NUMERIC(10,2) NOT NULL DEFAULT 0,
-            cost_price NUMERIC(10,2) NOT NULL DEFAULT 0
+            product_name VARCHAR(100) NOT NULL,
+            price NUMERIC(10,2) NOT NULL DEFAULT 0
         );
     """)
 
-    # Add cost price to an existing database
     cur.execute("""
         ALTER TABLE products
-        ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2) NOT NULL DEFAULT 0;
+        ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2)
+        NOT NULL DEFAULT 0;
     """)
 
-    # ---------------- CUSTOMERS ----------------
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'products_product_name_unique'
+            ) THEN
+                ALTER TABLE products
+                ADD CONSTRAINT products_product_name_unique
+                UNIQUE (product_name);
+            END IF;
+        END $$;
+    """)
+
+    # -----------------------------------------------------
+    # CUSTOMERS
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS customers (
@@ -129,7 +171,9 @@ def setup_database():
         );
     """)
 
-    # ---------------- SALES ----------------
+    # -----------------------------------------------------
+    # SALES
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS sales (
@@ -139,9 +183,7 @@ def setup_database():
             customer_id INT,
             total_amount NUMERIC(10,2) NOT NULL,
             payment_method VARCHAR(30),
-            payment_status VARCHAR(20) DEFAULT 'Paid',
-            term VARCHAR(20),
-            year INT
+            payment_status VARCHAR(20) DEFAULT 'Paid'
         );
     """)
 
@@ -155,7 +197,9 @@ def setup_database():
         ADD COLUMN IF NOT EXISTS year INT;
     """)
 
-    # ---------------- SALE ITEMS ----------------
+    # -----------------------------------------------------
+    # SALE ITEMS
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS sale_items (
@@ -164,8 +208,7 @@ def setup_database():
             product_id INT NOT NULL REFERENCES products(product_id),
             quantity INT NOT NULL,
             unit_price NUMERIC(10,2) NOT NULL,
-            line_total NUMERIC(10,2) NOT NULL,
-            issued BOOLEAN DEFAULT TRUE
+            line_total NUMERIC(10,2) NOT NULL
         );
     """)
 
@@ -174,26 +217,9 @@ def setup_database():
         ADD COLUMN IF NOT EXISTS issued BOOLEAN DEFAULT TRUE;
     """)
 
-    # ---------------- UNIFORM SETS ----------------
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS uniform_sets (
-            set_id SERIAL PRIMARY KEY,
-            school_id INT NOT NULL REFERENCES schools(school_id),
-            set_name VARCHAR(100) NOT NULL
-        );
-    """)
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS set_items (
-            set_item_id SERIAL PRIMARY KEY,
-            set_id INT NOT NULL,
-            product_id INT NOT NULL REFERENCES products(product_id),
-            quantity INT NOT NULL
-        );
-    """)
-
-    # ---------------- SCHOOL PRICES ----------------
+    # -----------------------------------------------------
+    # SCHOOL PRODUCT PRICES
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS school_product_prices (
@@ -206,7 +232,9 @@ def setup_database():
         );
     """)
 
-    # ---------------- STOCK ----------------
+    # -----------------------------------------------------
+    # STOCK
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS stock (
@@ -214,10 +242,7 @@ def setup_database():
             school_id INT NOT NULL REFERENCES schools(school_id),
             product_id INT NOT NULL REFERENCES products(product_id),
             quantity_brought INT NOT NULL,
-            date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            term VARCHAR(20),
-            year INT,
-            unit_cost NUMERIC(10,2) DEFAULT 0
+            date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
 
@@ -236,7 +261,30 @@ def setup_database():
         ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,2) DEFAULT 0;
     """)
 
-    # ---------------- INVESTORS ----------------
+    # -----------------------------------------------------
+    # UNIFORM SETS
+    # -----------------------------------------------------
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS uniform_sets (
+            set_id SERIAL PRIMARY KEY,
+            school_id INT NOT NULL REFERENCES schools(school_id),
+            set_name VARCHAR(100) NOT NULL
+        );
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS set_items (
+            set_item_id SERIAL PRIMARY KEY,
+            set_id INT NOT NULL REFERENCES uniform_sets(set_id),
+            product_id INT NOT NULL REFERENCES products(product_id),
+            quantity INT NOT NULL
+        );
+    """)
+
+    # -----------------------------------------------------
+    # INVESTORS
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS investors (
@@ -246,7 +294,9 @@ def setup_database():
         );
     """)
 
-    # ---------------- FINANCIAL TRANSACTIONS ----------------
+    # -----------------------------------------------------
+    # FINANCIAL TRANSACTIONS
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS financial_transactions (
@@ -262,78 +312,90 @@ def setup_database():
         );
     """)
 
-    cur.execute("""
-        ALTER TABLE financial_transactions
-        ADD COLUMN IF NOT EXISTS term VARCHAR(20);
-    """)
+    # =====================================================
+    # SEED SCHOOLS
+    # =====================================================
 
-    cur.execute("""
-        ALTER TABLE financial_transactions
-        ADD COLUMN IF NOT EXISTS year INT;
-    """)
-
-    # ========================================================
-    # INITIAL DATA
-    # ========================================================
-
-    cur.execute("""
-        INSERT INTO schools (school_name)
-        VALUES
-        ('LOVING BLOOMS SCHOOL'),
-        ('WARIDI UTAWALA SCHOOL')
-        ON CONFLICT (school_name) DO NOTHING;
-    """)
-
-    products = [
-        ("Skirt", 650, 0),
-        ("Blouse", 500, 0),
-        ("Socks", 200, 0),
-        ("Tracksuit Playgroup-PP2", 1600, 0),
-        ("Tracksuit G1-G6", 1800, 0),
-        ("Sweater", 1000, 0),
-        ("Tie", 150, 0),
-        ("Bow Tie", 150, 0),
-        ("Short", 400, 0),
-        ("Halfcoat", 600, 0),
-        ("Fleece", 2500, 0),
-        ("Trouser", 650, 0),
-        ("T-Shirt", 500, 0),
-        ("Wrap Skirt", 500, 0),
-        ("Half Sweater", 800, 0)
+    schools = [
+        "LOVING BLOOMS SCHOOL",
+        "WARIDI UTAWALA SCHOOL"
     ]
 
-    for name, price, cost in products:
+    for school in schools:
         cur.execute("""
-            INSERT INTO products
-            (product_name, price, cost_price)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (product_name) DO NOTHING;
-        """, (name, price, cost))
+            INSERT INTO schools (school_name)
+            SELECT %s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM schools WHERE school_name = %s
+            );
+        """, (school, school))
 
-    # ========================================================
-    # FRESH BUSINESS CYCLE
-    # Only seed the two investors if the finance table is empty.
-    # ========================================================
+    # =====================================================
+    # SEED PRODUCTS
+    # =====================================================
 
-    cur.execute("SELECT COUNT(*) FROM investors;")
-    investor_count = cur.fetchone()[0]
+    products = [
+        ("Skirt", 650),
+        ("Blouse", 500),
+        ("Socks", 200),
+        ("Tracksuit Playgroup-PP2", 1600),
+        ("Tracksuit G1-G6", 1800),
+        ("Sweater", 1000),
+        ("Tie", 150),
+        ("Bow Tie", 150),
+        ("Short", 400),
+        ("Halfcoat", 600),
+        ("Fleece", 2500),
+        ("Trouser", 650),
+        ("T-Shirt", 500),
+        ("Wrap Skirt", 500),
+        ("Half Sweater", 800)
+    ]
 
-    cur.execute("SELECT COUNT(*) FROM financial_transactions;")
-    transaction_count = cur.fetchone()[0]
+    for name, price in products:
 
-    if investor_count == 0 and transaction_count == 0:
+        cur.execute("""
+            INSERT INTO products (product_name, price)
+            SELECT %s, %s
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM products
+                WHERE product_name = %s
+            );
+        """, (name, price, name))
+
+    # =====================================================
+    # INVESTORS
+    # =====================================================
+
+    for investor in ["You", "Boyfriend"]:
 
         cur.execute("""
             INSERT INTO investors (investor_name)
-            VALUES ('You'), ('Boyfriend')
+            VALUES (%s)
             ON CONFLICT (investor_name) DO NOTHING;
-        """)
+        """, (investor,))
+
+    # =====================================================
+    # FRESH START CAPITAL
+    # =====================================================
+
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM financial_transactions
+        WHERE transaction_type = 'Capital Contribution';
+    """)
+
+    capital_count = cur.fetchone()[0]
+
+    if capital_count == 0:
 
         cur.execute("""
             SELECT investor_id
             FROM investors
             WHERE investor_name = 'You';
         """)
+
         you_id = cur.fetchone()[0]
 
         cur.execute("""
@@ -341,6 +403,7 @@ def setup_database():
             FROM investors
             WHERE investor_name = 'Boyfriend';
         """)
+
         boyfriend_id = cur.fetchone()[0]
 
         cur.execute("""
@@ -350,165 +413,46 @@ def setup_database():
                 category,
                 description,
                 amount,
-                investor_id,
-                term,
-                year
+                investor_id
             )
             VALUES
             (
                 'Capital Contribution',
                 'Investment',
-                'Opening capital',
+                'Fresh starting capital',
                 150000,
-                %s,
-                'Current',
-                EXTRACT(YEAR FROM CURRENT_DATE)
+                %s
             ),
             (
                 'Capital Contribution',
                 'Investment',
-                'Opening capital',
+                'Fresh starting capital',
                 100000,
-                %s,
-                'Current',
-                EXTRACT(YEAR FROM CURRENT_DATE)
+                %s
             );
         """, (you_id, boyfriend_id))
 
     conn.commit()
+
     cur.close()
     conn.close()
 
 
-# Run database setup
-setup_database()
+# =========================================================
+# RUN DATABASE SETUP
+# =========================================================
+
+try:
+    setup_database()
+except Exception as e:
+    st.error("Database setup error:")
+    st.code(str(e))
+    st.stop()
 
 
-# ============================================================
-# HELPERS
-# ============================================================
-
-def fetch_all(query, params=None):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(query, params or ())
-    rows = cur.fetchall()
-    columns = [desc[0] for desc in cur.description]
-    cur.close()
-    conn.close()
-    return pd.DataFrame(rows, columns=columns)
-
-
-def execute_query(query, params=None, fetch=False):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute(query, params or ())
-
-    result = None
-
-    if fetch:
-        rows = cur.fetchall()
-        columns = [desc[0] for desc in cur.description]
-        result = pd.DataFrame(rows, columns=columns)
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return result
-
-
-def get_schools():
-    return fetch_all("""
-        SELECT school_id, school_name
-        FROM schools
-        ORDER BY school_name;
-    """)
-
-
-def get_products():
-    return fetch_all("""
-        SELECT
-            product_id,
-            product_name,
-            price,
-            cost_price
-        FROM products
-        ORDER BY product_name;
-    """)
-
-
-def get_categories():
-    df = fetch_all("""
-        SELECT DISTINCT category_name
-        FROM school_product_prices
-        ORDER BY category_name;
-    """)
-
-    if df.empty:
-        return ["Primary", "JSS"]
-
-    return df["category_name"].tolist()
-
-
-def get_products_for_school_category(school_id, category):
-    return fetch_all("""
-        SELECT
-            p.product_id,
-            p.product_name,
-            spp.price,
-            p.cost_price
-        FROM school_product_prices spp
-        JOIN products p
-            ON p.product_id = spp.product_id
-        WHERE spp.school_id = %s
-          AND spp.category_name = %s
-        ORDER BY p.product_name;
-    """, (school_id, category))
-
-
-def get_stock_summary(school_id):
-    return fetch_all("""
-        SELECT
-            p.product_id,
-            p.product_name,
-
-            COALESCE(
-                (
-                    SELECT SUM(s.quantity_brought)
-                    FROM stock s
-                    WHERE s.school_id = %s
-                      AND s.product_id = p.product_id
-                ), 0
-            ) AS brought_in,
-
-            COALESCE(
-                (
-                    SELECT SUM(si.quantity)
-                    FROM sale_items si
-                    JOIN sales sa
-                        ON sa.sale_id = si.sale_id
-                    WHERE sa.school_id = %s
-                      AND si.product_id = p.product_id
-                ), 0
-            ) AS sold,
-
-            p.cost_price
-
-        FROM products p
-        WHERE p.product_id IN (
-            SELECT product_id
-            FROM school_product_prices
-            WHERE school_id = %s
-        )
-        ORDER BY p.product_name;
-    """, (school_id, school_id, school_id))
-
-
-# ============================================================
+# =========================================================
 # SESSION STATE
-# ============================================================
+# =========================================================
 
 if "cart" not in st.session_state:
     st.session_state.cart = []
@@ -517,14 +461,120 @@ if "last_receipt" not in st.session_state:
     st.session_state.last_receipt = None
 
 
-# ============================================================
+# =========================================================
+# HELPER FUNCTIONS
+# =========================================================
+
+def query_df(sql, params=None):
+
+    conn = get_connection()
+
+    try:
+        return pd.read_sql_query(sql, conn, params=params)
+    finally:
+        conn.close()
+
+
+def execute_query(sql, params=None, fetch=False):
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(sql, params)
+
+        result = None
+
+        if fetch:
+            result = cur.fetchall()
+
+        conn.commit()
+
+        return result
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_schools():
+
+    return query_df("""
+        SELECT school_id, school_name
+        FROM schools
+        ORDER BY school_name
+    """)
+
+
+def get_products():
+
+    return query_df("""
+        SELECT
+            product_id,
+            product_name,
+            price,
+            cost_price
+        FROM products
+        ORDER BY product_name
+    """)
+
+
+def get_categories():
+
+    return [
+        "Primary",
+        "JSS"
+    ]
+
+
+def get_products_for_school_category(school_id, category):
+
+    return query_df("""
+        SELECT
+            spp.product_id,
+            p.product_name,
+            spp.price,
+            p.cost_price
+        FROM school_product_prices spp
+        JOIN products p
+            ON p.product_id = spp.product_id
+        WHERE spp.school_id = %s
+        AND spp.category_name = %s
+        ORDER BY p.product_name
+    """, (school_id, category))
+
+
+def get_investor_id(name):
+
+    result = query_df("""
+        SELECT investor_id
+        FROM investors
+        WHERE investor_name = %s
+    """, (name,))
+
+    if result.empty:
+        return None
+
+    return int(result.iloc[0]["investor_id"])
+
+
+def money(value):
+
+    return f"KSh {float(value):,.2f}"
+
+
+# =========================================================
 # SIDEBAR
-# ============================================================
+# =========================================================
 
 st.sidebar.title("🧾 Uniform Sales POS")
 
 menu = st.sidebar.radio(
-    "Menu",
+    "Navigation",
     [
         "New Sale",
         "Price Management",
@@ -536,28 +586,32 @@ menu = st.sidebar.radio(
     ]
 )
 
-# ============================================================
+st.sidebar.markdown("---")
+st.sidebar.caption("Uniform Sales Management System")
+
+
+# =========================================================
 # NEW SALE
-# ============================================================
+# =========================================================
 
 if menu == "New Sale":
 
     st.title("🧾 New Sale")
 
-    schools = get_schools()
+    schools_df = get_schools()
 
-    if schools.empty:
-        st.warning("No schools found.")
+    if schools_df.empty:
+        st.error("No schools found.")
         st.stop()
 
     school_name = st.selectbox(
         "School",
-        schools["school_name"].tolist()
+        schools_df["school_name"].tolist()
     )
 
     school_id = int(
-        schools.loc[
-            schools["school_name"] == school_name,
+        schools_df.loc[
+            schools_df["school_name"] == school_name,
             "school_id"
         ].iloc[0]
     )
@@ -565,15 +619,17 @@ if menu == "New Sale":
     col1, col2 = st.columns(2)
 
     with col1:
+
         term = st.selectbox(
             "Term",
             ["Term 1", "Term 2", "Term 3"]
         )
 
     with col2:
+
         year = st.number_input(
             "Year",
-            min_value=2020,
+            min_value=2024,
             max_value=2100,
             value=datetime.now().year
         )
@@ -583,84 +639,108 @@ if menu == "New Sale":
         get_categories()
     )
 
-    products_df = get_products_for_school_category(
+    assigned_products = get_products_for_school_category(
         school_id,
         category
     )
 
-    if products_df.empty:
-        st.info(
+    if assigned_products.empty:
+
+        st.warning(
             "No products have been assigned to this school/category yet."
         )
-        st.stop()
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-        customer_name = st.text_input(
-            "Student / Customer Name"
+        st.info(
+            "Go to Price Management and assign products first."
         )
 
-    with col2:
-        phone = st.text_input(
-            "Phone Number"
+    else:
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            customer_name = st.text_input(
+                "Student / Customer Name"
+            )
+
+        with col2:
+
+            phone = st.text_input(
+                "Phone Number"
+            )
+
+        class_name = st.text_input(
+            "Class / Grade"
         )
 
-    class_grade = st.text_input(
-        "Class / Grade"
-    )
+        product_name = st.selectbox(
+            "Product",
+            assigned_products["product_name"].tolist()
+        )
 
-    product_name = st.selectbox(
-        "Product",
-        products_df["product_name"].tolist()
-    )
+        selected_product = assigned_products[
+            assigned_products["product_name"] == product_name
+        ].iloc[0]
 
-    selected_product = products_df[
-        products_df["product_name"] == product_name
-    ].iloc[0]
+        unit_price = float(selected_product["price"])
 
-    quantity = st.number_input(
-        "Quantity",
-        min_value=1,
-        value=1,
-        step=1
-    )
+        st.write(
+            f"Selling price: **{money(unit_price)}**"
+        )
 
-    issued = st.checkbox(
-        "Issued to customer",
-        value=True
-    )
+        col1, col2 = st.columns(2)
 
-    unit_price = float(selected_product["price"])
+        with col1:
 
-    if st.button("➕ Add to Cart", use_container_width=True):
+            quantity = st.number_input(
+                "Quantity",
+                min_value=1,
+                value=1,
+                step=1
+            )
 
-        st.session_state.cart.append({
-            "product_id": int(selected_product["product_id"]),
-            "product": product_name,
-            "quantity": int(quantity),
-            "unit_price": unit_price,
-            "total": unit_price * quantity,
-            "issued": issued
-        })
+        with col2:
 
-        st.success("Item added to cart.")
+            issued = st.checkbox(
+                "Issued to customer",
+                value=True
+            )
 
-    # ---------------- CART ----------------
+        if st.button("➕ Add to Cart"):
+
+            st.session_state.cart.append({
+                "product_id": int(selected_product["product_id"]),
+                "product_name": product_name,
+                "quantity": int(quantity),
+                "unit_price": unit_price,
+                "line_total": unit_price * quantity,
+                "issued": issued
+            })
+
+            st.success(
+                f"{quantity} × {product_name} added."
+            )
+
+    # -----------------------------------------------------
+    # CART
+    # -----------------------------------------------------
+
+    st.subheader("🛒 Current Cart")
 
     if st.session_state.cart:
 
-        st.subheader("🛒 Cart")
-
-        cart_df = pd.DataFrame(st.session_state.cart)
+        cart_df = pd.DataFrame(
+            st.session_state.cart
+        )
 
         st.dataframe(
             cart_df[
                 [
-                    "product",
+                    "product_name",
                     "quantity",
                     "unit_price",
-                    "total",
+                    "line_total",
                     "issued"
                 ]
             ],
@@ -668,30 +748,48 @@ if menu == "New Sale":
         )
 
         total = sum(
-            item["total"]
+            item["line_total"]
             for item in st.session_state.cart
         )
 
         st.markdown(
-            f"### Total: KSh {total:,.2f}"
-        )
-
-        payment_method = st.selectbox(
-            "Payment Method",
-            ["Cash", "M-Pesa", "Bank", "Card"]
+            f"### Total: {money(total)}"
         )
 
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button(
-                "✅ Complete Sale",
-                use_container_width=True
-            ):
 
-                if not customer_name.strip():
-                    st.error("Enter the student/customer name.")
-                    st.stop()
+            payment_method = st.selectbox(
+                "Payment Method",
+                [
+                    "Cash",
+                    "M-Pesa",
+                    "Bank",
+                    "Other"
+                ]
+            )
+
+        with col2:
+
+            if st.button("🗑️ Clear Cart"):
+
+                st.session_state.cart = []
+
+                st.rerun()
+
+        if st.button(
+            "✅ Complete Sale",
+            type="primary"
+        ):
+
+            if not customer_name.strip():
+
+                st.error(
+                    "Enter the student/customer name."
+                )
+
+            else:
 
                 conn = get_connection()
                 cur = conn.cursor()
@@ -701,10 +799,16 @@ if menu == "New Sale":
                     # Customer
                     cur.execute("""
                         INSERT INTO customers
-                        (customer_name, phone)
+                        (
+                            customer_name,
+                            phone
+                        )
                         VALUES (%s, %s)
                         RETURNING customer_id;
-                    """, (customer_name, phone))
+                    """, (
+                        customer_name,
+                        phone
+                    ))
 
                     customer_id = cur.fetchone()[0]
 
@@ -721,8 +825,16 @@ if menu == "New Sale":
                             year
                         )
                         VALUES
-                        (%s, %s, %s, %s, 'Paid', %s, %s)
-                        RETURNING sale_id, sale_date;
+                        (
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            'Paid',
+                            %s,
+                            %s
+                        )
+                        RETURNING sale_id;
                     """, (
                         school_id,
                         customer_id,
@@ -732,9 +844,9 @@ if menu == "New Sale":
                         year
                     ))
 
-                    sale_id, sale_date = cur.fetchone()
+                    sale_id = cur.fetchone()[0]
 
-                    # Items
+                    # Sale items
                     for item in st.session_state.cart:
 
                         cur.execute("""
@@ -748,17 +860,24 @@ if menu == "New Sale":
                                 issued
                             )
                             VALUES
-                            (%s, %s, %s, %s, %s, %s);
+                            (
+                                %s,
+                                %s,
+                                %s,
+                                %s,
+                                %s,
+                                %s
+                            );
                         """, (
                             sale_id,
                             item["product_id"],
                             item["quantity"],
                             item["unit_price"],
-                            item["total"],
+                            item["line_total"],
                             item["issued"]
                         ))
 
-                    # Sales income is automatically recorded in finance.
+                    # Financial transaction
                     cur.execute("""
                         INSERT INTO financial_transactions
                         (
@@ -772,7 +891,7 @@ if menu == "New Sale":
                         VALUES
                         (
                             'Sales Income',
-                            'Sales',
+                            'Revenue',
                             %s,
                             %s,
                             %s,
@@ -789,16 +908,17 @@ if menu == "New Sale":
 
                     st.session_state.last_receipt = {
                         "sale_id": sale_id,
-                        "sale_date": sale_date,
+                        "date": datetime.now().strftime(
+                            "%d/%m/%Y %H:%M"
+                        ),
                         "school": school_name,
                         "customer": customer_name,
                         "phone": phone,
-                        "class": class_grade,
                         "term": term,
                         "year": year,
+                        "payment": payment_method,
                         "items": st.session_state.cart.copy(),
-                        "total": total,
-                        "payment": payment_method
+                        "total": total
                     }
 
                     st.session_state.cart = []
@@ -810,222 +930,214 @@ if menu == "New Sale":
                 except Exception as e:
 
                     conn.rollback()
-                    st.error(f"Sale failed: {e}")
+
+                    st.error(
+                        "Sale could not be completed."
+                    )
+
+                    st.code(str(e))
 
                 finally:
 
                     cur.close()
                     conn.close()
 
-        with col2:
+    else:
 
-            if st.button(
-                "🗑️ Clear Cart",
-                use_container_width=True
-            ):
-                st.session_state.cart = []
-                st.rerun()
+        st.info("Cart is empty.")
 
-    # ---------------- RECEIPT ----------------
 
-    if st.session_state.last_receipt:
+# =========================================================
+# RECEIPT
+# =========================================================
 
-        receipt = st.session_state.last_receipt
+if menu == "New Sale" and st.session_state.last_receipt:
 
-        st.divider()
+    receipt = st.session_state.last_receipt
 
-        st.subheader("🧾 Receipt")
+    st.markdown("---")
+    st.subheader("🧾 Receipt")
 
-        receipt_html = f"""
-        <div style="
-            font-family:Arial;
-            max-width:500px;
-            padding:20px;
-            border:1px solid #ddd;
-            background:white;
-        ">
+    items_html = ""
 
-        <h2>UNIFORM SALES RECEIPT</h2>
+    for item in receipt["items"]:
 
-        <p><b>Sale:</b> #{receipt['sale_id']}</p>
-        <p><b>Date:</b> {receipt['sale_date']}</p>
-        <p><b>School:</b> {receipt['school']}</p>
-        <p><b>Customer:</b> {receipt['customer']}</p>
-        <p><b>Phone:</b> {receipt['phone']}</p>
-        <p><b>Class:</b> {receipt['class']}</p>
-        <p><b>Term:</b> {receipt['term']} {receipt['year']}</p>
-
-        <hr>
-
+        items_html += f"""
+        <tr>
+            <td>{item['product_name']}</td>
+            <td>{item['quantity']}</td>
+            <td>{money(item['unit_price'])}</td>
+            <td>{money(item['line_total'])}</td>
+        </tr>
         """
 
-        for item in receipt["items"]:
-            receipt_html += f"""
-            <p>
-                {item['product']} × {item['quantity']}
-                —
-                KSh {item['total']:,.2f}
-            </p>
-            """
+    receipt_html = f"""
+    <div class="receipt">
 
-        receipt_html += f"""
-        <hr>
+        <h2>UNIFORM SALES</h2>
 
-        <h3>Total: KSh {receipt['total']:,.2f}</h3>
+        <p>
+        <strong>School:</strong> {receipt['school']}<br>
+        <strong>Receipt No:</strong> {receipt['sale_id']}<br>
+        <strong>Date:</strong> {receipt['date']}<br>
+        <strong>Term:</strong> {receipt['term']} {receipt['year']}<br>
+        <strong>Customer:</strong> {receipt['customer']}<br>
+        <strong>Phone:</strong> {receipt['phone']}<br>
+        <strong>Payment:</strong> {receipt['payment']}
+        </p>
 
-        <p><b>Payment:</b> {receipt['payment']}</p>
+        <table style="width:100%; border-collapse:collapse;">
+            <tr>
+                <th style="text-align:left;">Item</th>
+                <th>Qty</th>
+                <th>Price</th>
+                <th>Total</th>
+            </tr>
 
-        </div>
-        """
+            {items_html}
 
-        components.html(
-            f"""
-            {receipt_html}
+        </table>
 
-            <br>
+        <h3 style="text-align:right;">
+            TOTAL: {money(receipt['total'])}
+        </h3>
 
-            <button
-                onclick="window.print()"
-                style="
-                    padding:10px 20px;
-                    background:#f57c00;
-                    color:white;
-                    border:none;
-                    border-radius:5px;
-                    cursor:pointer;
-                "
-            >
-                Print Receipt
-            </button>
-            """,
-            height=650
-        )
+    </div>
+    """
+
+    components.html(
+        receipt_html,
+        height=500,
+        scrolling=True
+    )
 
 
-# ============================================================
+# =========================================================
 # PRICE MANAGEMENT
-# ============================================================
+# =========================================================
 
 elif menu == "Price Management":
 
     st.title("💰 Price Management")
 
-    schools = get_schools()
+    schools_df = get_schools()
 
     school_name = st.selectbox(
         "School",
-        schools["school_name"].tolist()
+        schools_df["school_name"].tolist()
     )
 
     school_id = int(
-        schools.loc[
-            schools["school_name"] == school_name,
+        schools_df.loc[
+            schools_df["school_name"] == school_name,
             "school_id"
         ].iloc[0]
     )
 
     category = st.selectbox(
         "Category",
-        ["Primary", "JSS"]
+        get_categories()
     )
 
     st.subheader("Assigned Products")
 
-    assigned = get_products_for_school_category(
+    products_df = get_products_for_school_category(
         school_id,
         category
     )
 
-    if assigned.empty:
+    if not products_df.empty:
 
-        st.info("No products assigned yet.")
+        edited = st.data_editor(
+            products_df[
+                [
+                    "product_id",
+                    "product_name",
+                    "price"
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True,
+            disabled=["product_id", "product_name"]
+        )
 
-    else:
-
-        for _, row in assigned.iterrows():
-
-            new_price = st.number_input(
-                row["product_name"],
-                min_value=0.0,
-                value=float(row["price"]),
-                step=50.0,
-                key=f"price_{school_id}_{category}_{row['product_id']}"
-            )
-
-            if st.button(
-                f"Save {row['product_name']}",
-                key=f"saveprice_{school_id}_{category}_{row['product_id']}"
-            ):
-
-                execute_query("""
-                    UPDATE school_product_prices
-                    SET price = %s
-                    WHERE school_id = %s
-                      AND category_name = %s
-                      AND product_id = %s;
-                """, (
-                    new_price,
-                    school_id,
-                    category,
-                    int(row["product_id"])
-                ))
-
-                st.success("Price updated.")
-                st.rerun()
-
-    st.divider()
-
-    st.subheader("➕ Add Product")
-
-    product_name = st.text_input(
-        "Product Name"
-    )
-
-    selling_price = st.number_input(
-        "Selling Price",
-        min_value=0.0,
-        step=50.0
-    )
-
-    cost_price = st.number_input(
-        "Purchase / Cost Price",
-        min_value=0.0,
-        step=50.0,
-        help="What the business pays for one item."
-    )
-
-    if st.button(
-        "Create Product",
-        use_container_width=True
-    ):
-
-        if not product_name.strip():
-            st.error("Enter a product name.")
-            st.stop()
-
-        try:
+        if st.button("💾 Save Prices"):
 
             conn = get_connection()
             cur = conn.cursor()
 
-            cur.execute("""
-                INSERT INTO products
-                (
-                    product_name,
-                    price,
-                    cost_price
+            try:
+
+                for _, row in edited.iterrows():
+
+                    cur.execute("""
+                        UPDATE school_product_prices
+                        SET price = %s
+                        WHERE school_id = %s
+                        AND category_name = %s
+                        AND product_id = %s;
+                    """, (
+                        float(row["price"]),
+                        school_id,
+                        category,
+                        int(row["product_id"])
+                    ))
+
+                conn.commit()
+
+                st.success(
+                    "Prices updated successfully."
                 )
-                VALUES (%s, %s, %s)
-                RETURNING product_id;
-            """, (
-                product_name.strip(),
-                selling_price,
-                cost_price
-            ))
 
-            product_id = cur.fetchone()[0]
+            except Exception as e:
 
-            cur.execute("""
+                conn.rollback()
+
+                st.error(str(e))
+
+            finally:
+
+                cur.close()
+                conn.close()
+
+    else:
+
+        st.info(
+            "No products assigned to this category yet."
+        )
+
+    # -----------------------------------------------------
+    # ASSIGN PRODUCT
+    # -----------------------------------------------------
+
+    st.markdown("---")
+    st.subheader("➕ Assign Product")
+
+    all_products = get_products()
+
+    product_name = st.selectbox(
+        "Product to assign",
+        all_products["product_name"].tolist()
+    )
+
+    selected = all_products[
+        all_products["product_name"] == product_name
+    ].iloc[0]
+
+    default_price = float(selected["price"])
+
+    selling_price = st.number_input(
+        "Selling Price",
+        min_value=0.0,
+        value=default_price,
+        step=50.0
+    )
+
+    if st.button("Assign Product"):
+
+        try:
+
+            execute_query("""
                 INSERT INTO school_product_prices
                 (
                     school_id,
@@ -1033,441 +1145,434 @@ elif menu == "Price Management":
                     product_id,
                     price
                 )
-                VALUES (%s, %s, %s, %s)
+                VALUES
+                (
+                    %s,
+                    %s,
+                    %s,
+                    %s
+                )
                 ON CONFLICT
-                (school_id, category_name, product_id)
-                DO UPDATE SET price = EXCLUDED.price;
+                (
+                    school_id,
+                    category_name,
+                    product_id
+                )
+                DO UPDATE SET
+                    price = EXCLUDED.price;
             """, (
                 school_id,
                 category,
-                product_id,
+                int(selected["product_id"]),
                 selling_price
             ))
 
-            conn.commit()
-            cur.close()
-            conn.close()
+            st.success(
+                f"{product_name} assigned to {school_name}."
+            )
 
-            st.success("Product created and assigned.")
+            st.rerun()
 
         except Exception as e:
-            st.error(f"Could not create product: {e}")
+
+            st.error(str(e))
+
+    # -----------------------------------------------------
+    # CREATE PRODUCT
+    # -----------------------------------------------------
+
+    st.markdown("---")
+    st.subheader("🆕 Add New Product")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        new_product = st.text_input(
+            "Product Name"
+        )
+
+    with col2:
+
+        new_price = st.number_input(
+            "Selling Price",
+            min_value=0.0,
+            step=50.0
+        )
+
+    with col3:
+
+        new_cost = st.number_input(
+            "Cost Price",
+            min_value=0.0,
+            step=50.0
+        )
+
+    if st.button("Create Product"):
+
+        if not new_product.strip():
+
+            st.error("Enter a product name.")
+
+        else:
+
+            try:
+
+                execute_query("""
+                    INSERT INTO products
+                    (
+                        product_name,
+                        price,
+                        cost_price
+                    )
+                    VALUES
+                    (
+                        %s,
+                        %s,
+                        %s
+                    )
+                    ON CONFLICT (product_name)
+                    DO UPDATE SET
+                        price = EXCLUDED.price,
+                        cost_price = EXCLUDED.cost_price;
+                """, (
+                    new_product.strip(),
+                    new_price,
+                    new_cost
+                ))
+
+                st.success(
+                    "Product created/updated successfully."
+                )
+
+                st.rerun()
+
+            except Exception as e:
+
+                st.error(str(e))
 
 
-# ============================================================
+# =========================================================
 # STOCK MANAGEMENT
-# ============================================================
+# =========================================================
 
 elif menu == "Stock Management":
 
     st.title("📦 Stock Management")
 
-    schools = get_schools()
+    schools_df = get_schools()
 
     school_name = st.selectbox(
         "School",
-        schools["school_name"].tolist()
+        schools_df["school_name"].tolist()
     )
 
     school_id = int(
-        schools.loc[
-            schools["school_name"] == school_name,
+        schools_df.loc[
+            schools_df["school_name"] == school_name,
             "school_id"
         ].iloc[0]
     )
 
-    stock_products = get_stock_summary(school_id)
+    col1, col2 = st.columns(2)
 
-    if stock_products.empty:
+    with col1:
 
-        st.info("No products assigned to this school.")
-
-    else:
-
-        st.subheader("➕ Add Stock")
-
-        product_name = st.selectbox(
-            "Product",
-            stock_products["product_name"].tolist()
+        term = st.selectbox(
+            "Term",
+            ["Term 1", "Term 2", "Term 3"],
+            key="stock_term"
         )
 
-        product_row = stock_products[
-            stock_products["product_name"] == product_name
-        ].iloc[0]
+    with col2:
 
-        quantity = st.number_input(
-            "Quantity Brought In",
-            min_value=1,
-            value=1,
-            step=1
+        year = st.number_input(
+            "Year",
+            min_value=2024,
+            max_value=2100,
+            value=datetime.now().year,
+            key="stock_year"
         )
 
-        unit_cost = st.number_input(
-            "Cost Per Item",
-            min_value=0.0,
-            value=float(product_row["cost_price"]),
-            step=50.0
-        )
+    products_df = get_products()
 
-        col1, col2 = st.columns(2)
+    product_name = st.selectbox(
+        "Product",
+        products_df["product_name"].tolist()
+    )
 
-        with col1:
-            term = st.selectbox(
-                "Term",
-                ["Term 1", "Term 2", "Term 3"],
-                key="stock_term"
-            )
+    selected = products_df[
+        products_df["product_name"] == product_name
+    ].iloc[0]
 
-        with col2:
-            year = st.number_input(
-                "Year",
-                min_value=2020,
-                max_value=2100,
-                value=datetime.now().year,
-                key="stock_year"
-            )
+    quantity = st.number_input(
+        "Quantity brought in",
+        min_value=1,
+        step=1
+    )
 
-        if st.button(
-            "📦 Add Stock",
-            use_container_width=True
-        ):
+    unit_cost = st.number_input(
+        "Cost per item",
+        min_value=0.0,
+        value=float(selected["cost_price"]),
+        step=50.0
+    )
 
-            conn = get_connection()
-            cur = conn.cursor()
+    if st.button("📦 Add Stock"):
 
-            try:
+        conn = get_connection()
+        cur = conn.cursor()
 
-                product_id = int(product_row["product_id"])
-                total_cost = quantity * unit_cost
+        try:
 
-                # Add physical stock
-                cur.execute("""
-                    INSERT INTO stock
-                    (
-                        school_id,
-                        product_id,
-                        quantity_brought,
-                        term,
-                        year,
-                        unit_cost
-                    )
-                    VALUES
-                    (%s, %s, %s, %s, %s, %s);
-                """, (
+            cur.execute("""
+                INSERT INTO stock
+                (
                     school_id,
                     product_id,
-                    quantity,
+                    quantity_brought,
                     term,
                     year,
                     unit_cost
-                ))
+                )
+                VALUES
+                (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s
+                );
+            """, (
+                school_id,
+                int(selected["product_id"]),
+                quantity,
+                term,
+                year,
+                unit_cost
+            ))
 
-                # Record cash leaving the business
-                cur.execute("""
-                    INSERT INTO financial_transactions
-                    (
-                        transaction_type,
-                        category,
-                        description,
-                        amount,
-                        term,
-                        year
-                    )
-                    VALUES
-                    (
-                        'Stock Purchase',
-                        'Inventory',
-                        %s,
-                        %s,
-                        %s,
-                        %s
-                    );
-                """, (
-                    f"{quantity} × {product_name}",
-                    total_cost,
+            # Update product cost
+            cur.execute("""
+                UPDATE products
+                SET cost_price = %s
+                WHERE product_id = %s;
+            """, (
+                unit_cost,
+                int(selected["product_id"])
+            ))
+
+            purchase_value = quantity * unit_cost
+
+            # Finance transaction
+            cur.execute("""
+                INSERT INTO financial_transactions
+                (
+                    transaction_type,
+                    category,
+                    description,
+                    amount,
                     term,
                     year
-                ))
-
-                conn.commit()
-
-                st.success(
-                    f"Added {quantity} {product_name}(s). "
-                    f"Stock cost: KSh {total_cost:,.2f}"
                 )
+                VALUES
+                (
+                    'Stock Purchase',
+                    'Inventory',
+                    %s,
+                    %s,
+                    %s,
+                    %s
+                );
+            """, (
+                f"Stock: {quantity} × {product_name}",
+                purchase_value,
+                term,
+                year
+            ))
 
-            except Exception as e:
+            conn.commit()
 
-                conn.rollback()
-                st.error(f"Could not add stock: {e}")
+            st.success(
+                f"{quantity} units of {product_name} added."
+            )
 
-            finally:
+        except Exception as e:
 
-                cur.close()
-                conn.close()
+            conn.rollback()
+            st.error(str(e))
 
-        st.divider()
+        finally:
 
-        st.subheader("📊 Current Stock")
+            cur.close()
+            conn.close()
 
-        stock_products["remaining"] = (
-            stock_products["brought_in"]
-            - stock_products["sold"]
+    # -----------------------------------------------------
+    # STOCK REPORT
+    # -----------------------------------------------------
+
+    st.markdown("---")
+    st.subheader("📊 Current Stock")
+
+    stock_report = query_df("""
+        SELECT
+            p.product_name,
+
+            COALESCE(
+                SUM(s.quantity_brought),
+                0
+            ) AS brought,
+
+            COALESCE(
+                (
+                    SELECT SUM(si.quantity)
+                    FROM sale_items si
+                    JOIN sales sa
+                        ON sa.sale_id = si.sale_id
+                    WHERE si.product_id = p.product_id
+                    AND sa.school_id = %s
+                ),
+                0
+            ) AS sold,
+
+            p.cost_price
+
+        FROM products p
+
+        LEFT JOIN stock s
+            ON s.product_id = p.product_id
+            AND s.school_id = %s
+
+        GROUP BY
+            p.product_id,
+            p.product_name,
+            p.cost_price
+
+        ORDER BY p.product_name;
+    """, (school_id, school_id))
+
+    if not stock_report.empty:
+
+        stock_report["remaining"] = (
+            stock_report["brought"]
+            - stock_report["sold"]
         )
 
-        stock_products["stock_value"] = (
-            stock_products["remaining"]
-            * stock_products["cost_price"]
+        stock_report["stock_value"] = (
+            stock_report["remaining"]
+            * stock_report["cost_price"]
         )
-
-        display_stock = stock_products[
-            [
-                "product_name",
-                "brought_in",
-                "sold",
-                "remaining",
-                "cost_price",
-                "stock_value"
-            ]
-        ].copy()
-
-        display_stock.columns = [
-            "Uniform",
-            "Brought In",
-            "Sold",
-            "Remaining",
-            "Cost / Item",
-            "Remaining Stock Value"
-        ]
 
         st.dataframe(
-            display_stock,
+            stock_report,
             use_container_width=True
         )
 
-        low_stock = stock_products[
-            stock_products["remaining"] <= 5
+        low_stock = stock_report[
+            stock_report["remaining"] <= 5
         ]
 
         if not low_stock.empty:
 
             st.warning(
-                "⚠️ Low stock: "
-                + ", ".join(
-                    low_stock["product_name"].tolist()
-                )
+                "⚠️ Some products have 5 or fewer units remaining."
             )
 
 
-# ============================================================
+# =========================================================
 # BUSINESS FINANCE
-# ============================================================
+# =========================================================
 
 elif menu == "Business Finance":
 
-    st.title("💵 Business Finance & Investment")
+    st.title("💰 Business Finance")
 
-    st.caption(
-        "Fresh business cycle — previous stolen/lost capital is not included."
-    )
+    # -----------------------------------------------------
+    # INVESTOR CONTRIBUTIONS
+    # -----------------------------------------------------
 
-    # ========================================================
-    # INVESTORS
-    # ========================================================
-
-    st.subheader("👥 Investors")
-
-    investors = fetch_all("""
+    investors_df = query_df("""
         SELECT
-            investor_id,
-            investor_name,
-            active
-        FROM investors
-        ORDER BY investor_id;
-    """)
-
-    investment_summary = fetch_all("""
-        SELECT
+            i.investor_id,
             i.investor_name,
             COALESCE(
                 SUM(
                     CASE
-                        WHEN ft.transaction_type = 'Capital Contribution'
+                        WHEN ft.transaction_type =
+                        'Capital Contribution'
                         THEN ft.amount
                         ELSE 0
                     END
-                ), 0
-            ) AS invested
+                ),
+                0
+            ) AS contribution
+
         FROM investors i
+
         LEFT JOIN financial_transactions ft
-            ON i.investor_id = ft.investor_id
-        GROUP BY i.investor_id, i.investor_name
+            ON ft.investor_id = i.investor_id
+
+        WHERE i.active = TRUE
+
+        GROUP BY
+            i.investor_id,
+            i.investor_name
+
         ORDER BY i.investor_id;
     """)
 
-    total_capital = (
-        float(investment_summary["invested"].sum())
-        if not investment_summary.empty
-        else 0
-    )
+    total_capital = investors_df["contribution"].sum()
 
-    if not investment_summary.empty:
+    if total_capital > 0:
 
-        investment_summary["percentage"] = (
-            investment_summary["invested"]
-            / total_capital * 100
-            if total_capital > 0
-            else 0
+        investors_df["ownership_percent"] = (
+            investors_df["contribution"]
+            / total_capital
+            * 100
         )
 
-        investment_summary["invested"] = (
-            investment_summary["invested"].map(
-                lambda x: f"KSh {x:,.2f}"
-            )
-        )
+    st.subheader("👥 Investors")
 
-        investment_summary["percentage"] = (
-            investment_summary["percentage"].map(
-                lambda x: f"{x:.1f}%"
-            )
-        )
-
-        investment_summary.columns = [
-            "Investor",
-            "Capital Invested",
-            "Contribution"
-        ]
-
-        st.dataframe(
-            investment_summary,
-            use_container_width=True
-        )
-
-    # ========================================================
-    # ADD INVESTOR
-    # ========================================================
-
-    with st.expander("➕ Add / Edit Investor"):
-
-        new_investor = st.text_input(
-            "Investor Name"
-        )
-
-        if st.button("Add Investor"):
-
-            if new_investor.strip():
-
-                try:
-
-                    execute_query("""
-                        INSERT INTO investors
-                        (investor_name)
-                        VALUES (%s)
-                        ON CONFLICT (investor_name)
-                        DO NOTHING;
-                    """, (new_investor.strip(),))
-
-                    st.success("Investor added.")
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(str(e))
-
-    st.divider()
-
-    # ========================================================
-    # ADD FINANCIAL TRANSACTION
-    # ========================================================
-
-    st.subheader("➕ Add Financial Transaction")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        transaction_type = st.selectbox(
-            "Transaction Type",
-            [
-                "Capital Contribution",
-                "Stock Purchase",
-                "Expense",
-                "Other Income",
-                "Owner Withdrawal",
-                "Profit Distribution"
-            ]
-        )
-
-    with col2:
-
-        amount = st.number_input(
-            "Amount",
-            min_value=0.0,
-            step=100.0
-        )
-
-    category = st.text_input(
-        "Category",
-        value=(
-            "Investment"
-            if transaction_type == "Capital Contribution"
-            else ""
-        )
-    )
-
-    description = st.text_input(
-        "Description"
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        transaction_term = st.selectbox(
-            "Term",
-            ["Term 1", "Term 2", "Term 3", "Current"],
-            key="finance_term"
-        )
-
-    with col2:
-
-        transaction_year = st.number_input(
-            "Year",
-            min_value=2020,
-            max_value=2100,
-            value=datetime.now().year,
-            key="finance_year"
-        )
-
-    investor_id = None
-
-    if transaction_type in [
-        "Capital Contribution",
-        "Owner Withdrawal",
-        "Profit Distribution"
-    ]:
-
-        investor_options = {
-            row["investor_name"]: int(row["investor_id"])
-            for _, row in investors.iterrows()
-        }
-
-        if investor_options:
-
-            investor_name = st.selectbox(
-                "Investor",
-                list(investor_options.keys())
-            )
-
-            investor_id = investor_options[investor_name]
-
-    if st.button(
-        "💾 Save Transaction",
+    st.dataframe(
+        investors_df,
         use_container_width=True
-    ):
+    )
 
-        if amount <= 0:
-            st.error("Amount must be greater than zero.")
-            st.stop()
+    # -----------------------------------------------------
+    # ADD CAPITAL
+    # -----------------------------------------------------
+
+    st.subheader("➕ Record Investment")
+
+    investor = st.selectbox(
+        "Investor",
+        ["You", "Boyfriend"]
+    )
+
+    investment_amount = st.number_input(
+        "Amount",
+        min_value=0.0,
+        step=5000.0
+    )
+
+    investment_term = st.selectbox(
+        "Term",
+        ["Term 1", "Term 2", "Term 3"],
+        key="investment_term"
+    )
+
+    investment_year = st.number_input(
+        "Year",
+        min_value=2024,
+        max_value=2100,
+        value=datetime.now().year,
+        key="investment_year"
+    )
+
+    if st.button("Record Investment"):
+
+        investor_id = get_investor_id(investor)
 
         execute_query("""
             INSERT INTO financial_transactions
@@ -1481,523 +1586,529 @@ elif menu == "Business Finance":
                 year
             )
             VALUES
-            (%s, %s, %s, %s, %s, %s, %s);
+            (
+                'Capital Contribution',
+                'Investment',
+                'Additional capital',
+                %s,
+                %s,
+                %s,
+                %s
+            );
         """, (
-            transaction_type,
-            category or "General",
-            description,
-            amount,
+            investment_amount,
             investor_id,
-            transaction_term,
-            transaction_year
+            investment_term,
+            investment_year
         ))
 
-        st.success("Transaction recorded.")
+        st.success("Investment recorded.")
         st.rerun()
 
-    # ========================================================
-    # FINANCIAL CALCULATIONS
-    # ========================================================
+    # -----------------------------------------------------
+    # FINANCE METRICS
+    # -----------------------------------------------------
 
-    transactions = fetch_all("""
+    finance_df = query_df("""
         SELECT
-            transaction_id,
-            transaction_date,
             transaction_type,
-            category,
-            description,
-            amount,
-            term,
-            year
+            COALESCE(SUM(amount), 0) AS total
         FROM financial_transactions
-        ORDER BY transaction_date DESC;
+        GROUP BY transaction_type
     """)
 
-    capital = total_capital
+    def finance_total(transaction_type):
 
-    sales_revenue = (
-        float(
-            transactions.loc[
-                transactions["transaction_type"] == "Sales Income",
-                "amount"
-            ].sum()
-        )
-        if not transactions.empty
-        else 0
-    )
+        row = finance_df[
+            finance_df["transaction_type"]
+            == transaction_type
+        ]
 
-    stock_purchases = (
-        float(
-            transactions.loc[
-                transactions["transaction_type"] == "Stock Purchase",
-                "amount"
-            ].sum()
-        )
-        if not transactions.empty
-        else 0
-    )
+        if row.empty:
+            return 0
 
-    expenses = (
-        float(
-            transactions.loc[
-                transactions["transaction_type"] == "Expense",
-                "amount"
-            ].sum()
-        )
-        if not transactions.empty
-        else 0
-    )
+        return float(row.iloc[0]["total"])
 
-    other_income = (
-        float(
-            transactions.loc[
-                transactions["transaction_type"] == "Other Income",
-                "amount"
-            ].sum()
-        )
-        if not transactions.empty
-        else 0
-    )
+    capital = finance_total("Capital Contribution")
+    revenue = finance_total("Sales Income")
+    expenses = finance_total("Expense")
+    other_income = finance_total("Other Income")
+    withdrawals = finance_total("Owner Withdrawal")
+    distributions = finance_total("Profit Distribution")
 
-    withdrawals = (
-        float(
-            transactions.loc[
-                transactions["transaction_type"].isin(
-                    [
-                        "Owner Withdrawal",
-                        "Profit Distribution"
-                    ]
-                ),
-                "amount"
-            ].sum()
-        )
-        if not transactions.empty
-        else 0
-    )
-
-    # ========================================================
-    # COGS / PROFIT
-    # ========================================================
-
-    cogs_df = fetch_all("""
+    # COGS
+    cogs_df = query_df("""
         SELECT
             COALESCE(
-                SUM(si.quantity * p.cost_price),
+                SUM(
+                    si.quantity * p.cost_price
+                ),
                 0
             ) AS cogs
+
         FROM sale_items si
+
         JOIN products p
             ON p.product_id = si.product_id;
     """)
 
     cogs = float(cogs_df.iloc[0]["cogs"])
 
-    gross_profit = sales_revenue - cogs
+    gross_profit = revenue - cogs
 
-    net_profit = gross_profit + other_income - expenses
-
-    cash_position = (
-        capital
-        + sales_revenue
+    net_profit = (
+        gross_profit
         + other_income
-        - stock_purchases
         - expenses
-        - withdrawals
     )
 
-    # ========================================================
-    # INVENTORY VALUE
-    # ========================================================
+    roi = 0
 
-    inventory_df = fetch_all("""
+    if capital > 0:
+        roi = (
+            net_profit
+            / capital
+            * 100
+        )
+
+    # Inventory
+    inventory_df = query_df("""
         SELECT
             COALESCE(
                 SUM(
-                    stock_total.quantity_brought
-                    - COALESCE(sold_total.sold_quantity, 0)
-                ) * p.cost_price,
+                    s.quantity_brought
+                    * s.unit_cost
+                ),
                 0
             ) AS inventory_value
-        FROM products p
-
-        LEFT JOIN (
-            SELECT
-                product_id,
-                SUM(quantity_brought) AS quantity_brought
-            FROM stock
-            GROUP BY product_id
-        ) stock_total
-            ON stock_total.product_id = p.product_id
-
-        LEFT JOIN (
-            SELECT
-                si.product_id,
-                SUM(si.quantity) AS sold_quantity
-            FROM sale_items si
-            GROUP BY si.product_id
-        ) sold_total
-            ON sold_total.product_id = p.product_id;
+        FROM stock s;
     """)
 
-    inventory_value = (
-        float(inventory_df.iloc[0]["inventory_value"])
-        if not inventory_df.empty
-        else 0
+    inventory_value = float(
+        inventory_df.iloc[0]["inventory_value"]
     )
 
-    # ========================================================
-    # ROI
-    # ========================================================
-
-    roi = (
-        (net_profit / capital) * 100
-        if capital > 0
-        else 0
+    cash_position = (
+        capital
+        + revenue
+        + other_income
+        - expenses
+        - withdrawals
+        - distributions
+        - cogs
     )
 
-    # ========================================================
+    # -----------------------------------------------------
     # METRICS
-    # ========================================================
+    # -----------------------------------------------------
 
-    st.subheader("📊 Business Position")
+    st.markdown("---")
+    st.subheader("📊 Financial Position")
 
     c1, c2, c3, c4 = st.columns(4)
 
-    with c1:
-        st.metric(
+    c1.metric(
+        "Capital Invested",
+        money(capital)
+    )
+
+    c2.metric(
+        "Sales Revenue",
+        money(revenue)
+    )
+
+    c3.metric(
+        "Inventory Value",
+        money(inventory_value)
+    )
+
+    c4.metric(
+        "Cash Position",
+        money(cash_position)
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric(
+        "COGS",
+        money(cogs)
+    )
+
+    c2.metric(
+        "Gross Profit",
+        money(gross_profit)
+    )
+
+    c3.metric(
+        "Net Profit",
+        money(net_profit)
+    )
+
+    c4.metric(
+        "ROI",
+        f"{roi:.2f}%"
+    )
+
+    # -----------------------------------------------------
+    # PROFIT EXPLANATION
+    # -----------------------------------------------------
+
+    st.markdown("---")
+
+    st.subheader("📈 Business Performance")
+
+    performance = pd.DataFrame({
+        "Metric": [
             "Capital Invested",
-            f"KSh {capital:,.0f}"
-        )
-
-    with c2:
-        st.metric(
             "Sales Revenue",
-            f"KSh {sales_revenue:,.0f}"
-        )
-
-    with c3:
-        st.metric(
-            "Inventory Value",
-            f"KSh {inventory_value:,.0f}"
-        )
-
-    with c4:
-        st.metric(
-            "Cash Position",
-            f"KSh {cash_position:,.0f}"
-        )
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    with c1:
-        st.metric(
             "Cost of Goods Sold",
-            f"KSh {cogs:,.0f}"
-        )
-
-    with c2:
-        st.metric(
             "Gross Profit",
-            f"KSh {gross_profit:,.0f}"
-        )
-
-    with c3:
-        st.metric(
-            "Net Profit",
-            f"KSh {net_profit:,.0f}"
-        )
-
-    with c4:
-        st.metric(
-            "ROI",
-            f"{roi:.2f}%"
-        )
-
-    # ========================================================
-    # BREAKDOWN
-    # ========================================================
-
-    st.subheader("💰 Financial Breakdown")
-
-    breakdown = pd.DataFrame({
-        "Category": [
-            "Capital Invested",
-            "Sales Revenue",
-            "Stock Purchases",
             "Operating Expenses",
-            "Owner Withdrawals",
+            "Other Income",
+            "Net Profit",
             "Inventory Value",
-            "Net Profit"
+            "Cash Position",
+            "ROI"
         ],
         "Amount": [
             capital,
-            sales_revenue,
-            stock_purchases,
+            revenue,
+            cogs,
+            gross_profit,
             expenses,
-            withdrawals,
+            other_income,
+            net_profit,
             inventory_value,
-            net_profit
+            cash_position,
+            roi
         ]
     })
 
-    breakdown["Amount"] = breakdown["Amount"].map(
-        lambda x: f"KSh {x:,.2f}"
-    )
-
     st.dataframe(
-        breakdown,
+        performance,
         use_container_width=True
     )
 
-    # ========================================================
-    # INVESTMENT RETURN
-    # ========================================================
+    # -----------------------------------------------------
+    # PROFIT SHARE
+    # -----------------------------------------------------
 
-    st.subheader("📈 Investment Return")
+    st.subheader("👥 Estimated Profit Share")
 
-    st.info(
-        "ROI is calculated from recorded profit relative to the fresh capital "
-        "invested in this business cycle."
-    )
+    if total_capital > 0:
 
-    if capital > 0:
-
-        st.write(
-            f"**Current capital:** KSh {capital:,.2f}"
-        )
-
-        st.write(
-            f"**Current net profit:** KSh {net_profit:,.2f}"
-        )
-
-        st.write(
-            f"**Current ROI:** {roi:.2f}%"
-        )
-
-        investor_returns = fetch_all("""
-            SELECT
-                i.investor_name,
-                COALESCE(
-                    SUM(
-                        CASE
-                            WHEN ft.transaction_type =
-                                'Capital Contribution'
-                            THEN ft.amount
-                            ELSE 0
-                        END
-                    ), 0
-                ) AS invested
-            FROM investors i
-            LEFT JOIN financial_transactions ft
-                ON i.investor_id = ft.investor_id
-            GROUP BY i.investor_id, i.investor_name
-            ORDER BY i.investor_id;
-        """)
-
-        if not investor_returns.empty:
-
-            investor_returns["ownership"] = (
-                investor_returns["invested"]
-                / capital * 100
-            )
-
-            investor_returns["estimated_profit_share"] = (
-                investor_returns["ownership"]
-                / 100
-                * net_profit
-            )
-
-            investor_returns_display = investor_returns.copy()
-
-            investor_returns_display[
-                "invested"
-            ] = investor_returns_display["invested"].map(
-                lambda x: f"KSh {x:,.2f}"
-            )
-
-            investor_returns_display[
-                "ownership"
-            ] = investor_returns_display["ownership"].map(
-                lambda x: f"{x:.1f}%"
-            )
-
-            investor_returns_display[
-                "estimated_profit_share"
-            ] = investor_returns_display[
-                "estimated_profit_share"
-            ].map(
-                lambda x: f"KSh {x:,.2f}"
-            )
-
-            investor_returns_display.columns = [
-                "Investor",
-                "Capital",
-                "Contribution %",
-                "Estimated Profit Share"
+        share_df = investors_df[
+            [
+                "investor_name",
+                "contribution",
+                "ownership_percent"
             ]
+        ].copy()
 
-            st.dataframe(
-                investor_returns_display,
-                use_container_width=True
-            )
-
-    # ========================================================
-    # TRANSACTION HISTORY
-    # ========================================================
-
-    st.subheader("📋 Financial Ledger")
-
-    if transactions.empty:
-
-        st.info("No financial transactions yet.")
-
-    else:
-
-        ledger = transactions.copy()
-
-        ledger["amount"] = ledger["amount"].map(
-            lambda x: f"KSh {float(x):,.2f}"
+        share_df["estimated_profit_share"] = (
+            share_df["ownership_percent"]
+            / 100
+            * net_profit
         )
 
         st.dataframe(
-            ledger,
+            share_df,
             use_container_width=True
         )
 
+        st.caption(
+            "This is an estimated contribution-based share. "
+            "Actual profit distributions should be agreed by the investors."
+        )
 
-# ============================================================
+    # -----------------------------------------------------
+    # MANUAL TRANSACTION
+    # -----------------------------------------------------
+
+    st.markdown("---")
+    st.subheader("📝 Record Business Transaction")
+
+    transaction_type = st.selectbox(
+        "Transaction Type",
+        [
+            "Expense",
+            "Other Income",
+            "Owner Withdrawal",
+            "Profit Distribution"
+        ]
+    )
+
+    transaction_category = st.text_input(
+        "Category",
+        value="General"
+    )
+
+    transaction_description = st.text_input(
+        "Description"
+    )
+
+    transaction_amount = st.number_input(
+        "Amount",
+        min_value=0.0,
+        step=100.0
+    )
+
+    transaction_term = st.selectbox(
+        "Term",
+        ["Term 1", "Term 2", "Term 3"],
+        key="manual_term"
+    )
+
+    transaction_year = st.number_input(
+        "Year",
+        min_value=2024,
+        max_value=2100,
+        value=datetime.now().year,
+        key="manual_year"
+    )
+
+    if st.button("Save Transaction"):
+
+        execute_query("""
+            INSERT INTO financial_transactions
+            (
+                transaction_type,
+                category,
+                description,
+                amount,
+                term,
+                year
+            )
+            VALUES
+            (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            );
+        """, (
+            transaction_type,
+            transaction_category,
+            transaction_description,
+            transaction_amount,
+            transaction_term,
+            transaction_year
+        ))
+
+        st.success(
+            "Transaction saved."
+        )
+
+        st.rerun()
+
+    # -----------------------------------------------------
+    # LEDGER
+    # -----------------------------------------------------
+
+    st.markdown("---")
+    st.subheader("📒 Financial Ledger")
+
+    ledger = query_df("""
+        SELECT
+            ft.transaction_date,
+            ft.transaction_type,
+            ft.category,
+            ft.description,
+            ft.amount,
+            COALESCE(i.investor_name, '') AS investor,
+            ft.term,
+            ft.year
+
+        FROM financial_transactions ft
+
+        LEFT JOIN investors i
+            ON i.investor_id = ft.investor_id
+
+        ORDER BY ft.transaction_date DESC;
+    """)
+
+    st.dataframe(
+        ledger,
+        use_container_width=True
+    )
+
+
+# =========================================================
 # SALES OVERVIEW
-# ============================================================
+# =========================================================
 
 elif menu == "Sales Overview":
 
     st.title("📊 Sales Overview")
 
-    sales = fetch_all("""
+    summary = query_df("""
         SELECT
-            s.sale_id,
-            s.sale_date,
-            s.total_amount,
-            s.term,
-            s.year,
-            sc.school_name
-        FROM sales s
-        JOIN schools sc
-            ON sc.school_id = s.school_id
-        ORDER BY s.sale_date;
+            COUNT(*) AS total_sales,
+            COALESCE(SUM(total_amount), 0) AS revenue,
+            COALESCE(AVG(total_amount), 0) AS average_sale
+        FROM sales;
     """)
 
-    if sales.empty:
+    total_sales = int(
+        summary.iloc[0]["total_sales"]
+    )
 
-        st.info("No sales recorded yet.")
+    revenue = float(
+        summary.iloc[0]["revenue"]
+    )
 
-    else:
+    average_sale = float(
+        summary.iloc[0]["average_sale"]
+    )
 
-        sales["sale_date"] = pd.to_datetime(
-            sales["sale_date"]
-        )
+    c1, c2, c3 = st.columns(3)
 
-        total_revenue = float(
-            sales["total_amount"].sum()
-        )
+    c1.metric(
+        "Number of Sales",
+        total_sales
+    )
 
-        total_sales = len(sales)
+    c2.metric(
+        "Revenue",
+        money(revenue)
+    )
 
-        average_sale = (
-            total_revenue / total_sales
-            if total_sales > 0
-            else 0
-        )
+    c3.metric(
+        "Average Sale",
+        money(average_sale)
+    )
 
-        c1, c2, c3 = st.columns(3)
+    # -----------------------------------------------------
+    # BY TERM
+    # -----------------------------------------------------
 
-        with c1:
-            st.metric(
-                "Total Sales",
-                total_sales
-            )
+    st.subheader("Revenue by Term")
 
-        with c2:
-            st.metric(
-                "Revenue",
-                f"KSh {total_revenue:,.2f}"
-            )
+    term_df = query_df("""
+        SELECT
+            year,
+            term,
+            SUM(total_amount) AS revenue
+        FROM sales
+        GROUP BY year, term
+        ORDER BY year, term;
+    """)
 
-        with c3:
-            st.metric(
-                "Average Sale",
-                f"KSh {average_sale:,.2f}"
-            )
-
-        st.subheader("Revenue by Term")
-
-        term_summary = (
-            sales
-            .groupby(["year", "term"], dropna=False)
-            ["total_amount"]
-            .sum()
-            .reset_index()
-        )
+    if not term_df.empty:
 
         st.dataframe(
-            term_summary,
+            term_df,
             use_container_width=True
         )
 
         st.bar_chart(
-            term_summary.set_index(
+            term_df.set_index(
                 ["year", "term"]
-            )["total_amount"]
+            )["revenue"]
         )
 
-        st.subheader("Revenue by School")
+    # -----------------------------------------------------
+    # BY SCHOOL
+    # -----------------------------------------------------
 
-        school_summary = (
-            sales
-            .groupby("school_name")["total_amount"]
-            .sum()
-            .sort_values(ascending=False)
-        )
+    st.subheader("Revenue by School")
+
+    school_sales = query_df("""
+        SELECT
+            s.school_name,
+            COUNT(sa.sale_id) AS sales,
+            SUM(sa.total_amount) AS revenue
+
+        FROM sales sa
+
+        JOIN schools s
+            ON s.school_id = sa.school_id
+
+        GROUP BY s.school_name
+
+        ORDER BY revenue DESC;
+    """)
+
+    st.dataframe(
+        school_sales,
+        use_container_width=True
+    )
+
+    if not school_sales.empty:
 
         st.bar_chart(
-            school_summary
+            school_sales.set_index(
+                "school_name"
+            )["revenue"]
         )
 
+    # -----------------------------------------------------
+    # TOP PRODUCTS
+    # -----------------------------------------------------
 
-# ============================================================
+    st.subheader("Top Selling Products")
+
+    top_products = query_df("""
+        SELECT
+            p.product_name,
+            SUM(si.quantity) AS quantity_sold,
+            SUM(si.line_total) AS revenue
+
+        FROM sale_items si
+
+        JOIN products p
+            ON p.product_id = si.product_id
+
+        GROUP BY p.product_name
+
+        ORDER BY quantity_sold DESC;
+    """)
+
+    st.dataframe(
+        top_products,
+        use_container_width=True
+    )
+
+
+# =========================================================
 # SALES HISTORY
-# ============================================================
+# =========================================================
 
 elif menu == "Sales History":
 
-    st.title("📋 Sales History")
+    st.title("📜 Sales History")
 
-    history = fetch_all("""
+    history = query_df("""
         SELECT
-            s.sale_id,
-            s.sale_date,
-            sc.school_name,
+            sa.sale_id,
+            sa.sale_date,
+            s.school_name,
             c.customer_name,
             c.phone,
-            s.term,
-            s.year,
-            s.total_amount,
-            s.payment_method,
-            s.payment_status
-        FROM sales s
+            sa.term,
+            sa.year,
+            sa.total_amount,
+            sa.payment_method,
+            sa.payment_status
 
-        JOIN schools sc
-            ON sc.school_id = s.school_id
+        FROM sales sa
+
+        JOIN schools s
+            ON s.school_id = sa.school_id
 
         LEFT JOIN customers c
-            ON c.customer_id = s.customer_id
+            ON c.customer_id = sa.customer_id
 
-        ORDER BY s.sale_date DESC;
+        ORDER BY sa.sale_date DESC;
     """)
 
     if history.empty:
 
-        st.info("No sales yet.")
+        st.info(
+            "No sales have been recorded yet."
+        )
 
     else:
 
@@ -2006,244 +2117,196 @@ elif menu == "Sales History":
             use_container_width=True
         )
 
+        st.download_button(
+            "Download Sales CSV",
+            history.to_csv(index=False),
+            "sales_history.csv",
+            "text/csv"
+        )
 
-# ============================================================
+
+# =========================================================
 # ML & FORECASTING
-# ============================================================
+# =========================================================
 
 elif menu == "ML & Forecasting":
 
-    st.title("🤖 ML & Business Forecasting")
+    st.title("🤖 ML & Forecasting")
 
     st.write(
-        "This section will use the business data collected by the system "
-        "to support forecasting and decision-making."
+        "This section prepares the business data for predictive analysis."
     )
 
-    # ========================================================
-    # BUSINESS INVESTMENT ANALYSIS
-    # ========================================================
+    # -----------------------------------------------------
+    # REVENUE TREND
+    # -----------------------------------------------------
 
-    st.subheader("💰 Investment Analysis")
+    st.subheader("📈 Revenue Trend")
 
-    finance = fetch_all("""
+    daily_sales = query_df("""
         SELECT
-            transaction_date,
-            transaction_type,
-            amount,
-            term,
-            year
-        FROM financial_transactions
-        ORDER BY transaction_date;
-    """)
-
-    if finance.empty:
-
-        st.info(
-            "Investment analysis will become available once financial "
-            "transactions are recorded."
-        )
-
-    else:
-
-        capital = float(
-            finance.loc[
-                finance["transaction_type"]
-                == "Capital Contribution",
-                "amount"
-            ].sum()
-        )
-
-        revenue = float(
-            finance.loc[
-                finance["transaction_type"]
-                == "Sales Income",
-                "amount"
-            ].sum()
-        )
-
-        expenses = float(
-            finance.loc[
-                finance["transaction_type"]
-                == "Expense",
-                "amount"
-            ].sum()
-        )
-
-        st.write(
-            f"**Capital invested:** KSh {capital:,.2f}"
-        )
-
-        st.write(
-            f"**Revenue generated:** KSh {revenue:,.2f}"
-        )
-
-        st.write(
-            f"**Operating expenses:** KSh {expenses:,.2f}"
-        )
-
-        if capital > 0:
-
-            simple_return = (
-                (revenue - expenses - capital)
-                / capital
-            ) * 100
-
-            st.metric(
-                "Revenue-based return indicator",
-                f"{simple_return:.2f}%"
-            )
-
-    # ========================================================
-    # SALES DATA
-    # ========================================================
-
-    sales_ml = fetch_all("""
-        SELECT
-            sale_date,
-            total_amount,
-            term,
-            year,
-            school_id
+            DATE(sale_date) AS sale_date,
+            SUM(total_amount) AS revenue
         FROM sales
+        GROUP BY DATE(sale_date)
         ORDER BY sale_date;
     """)
 
-    if sales_ml.empty:
+    if daily_sales.empty:
 
         st.info(
-            "More sales data is needed before meaningful forecasting "
-            "can be performed."
+            "More sales data is needed before forecasting can begin."
         )
 
     else:
 
-        sales_ml["sale_date"] = pd.to_datetime(
-            sales_ml["sale_date"]
+        daily_sales["sale_date"] = pd.to_datetime(
+            daily_sales["sale_date"]
         )
-
-        daily = (
-            sales_ml
-            .groupby(
-                sales_ml["sale_date"].dt.date
-            )["total_amount"]
-            .sum()
-            .reset_index()
-        )
-
-        daily.columns = [
-            "date",
-            "revenue"
-        ]
-
-        st.subheader("📈 Historical Revenue")
 
         st.line_chart(
-            daily.set_index("date")["revenue"]
+            daily_sales.set_index(
+                "sale_date"
+            )["revenue"]
         )
 
-        # ====================================================
+        # -------------------------------------------------
         # SIMPLE FORECAST
-        # ====================================================
+        # -------------------------------------------------
 
-        if len(daily) >= 3:
+        if len(daily_sales) >= 3:
 
-            recent = daily["revenue"].tail(
-                min(7, len(daily))
+            recent_average = daily_sales[
+                "revenue"
+            ].tail(7).mean()
+
+            st.metric(
+                "Recent Average Daily Revenue",
+                money(recent_average)
             )
 
-            average_recent = recent.mean()
-
-            st.subheader(
-                "🔮 Simple Revenue Forecast"
+            forecast_days = st.slider(
+                "Forecast Days",
+                1,
+                30,
+                7
             )
 
-            st.write(
-                f"Recent average daily revenue: "
-                f"**KSh {average_recent:,.2f}**"
+            forecast = pd.DataFrame({
+                "Day": range(
+                    1,
+                    forecast_days + 1
+                ),
+                "Forecast Revenue": [
+                    recent_average
+                    for _ in range(forecast_days)
+                ]
+            })
+
+            st.dataframe(
+                forecast,
+                use_container_width=True
             )
 
-            st.info(
-                "This is a simple baseline forecast. "
-                "Once enough historical sales accumulate, "
-                "we can replace it with proper ML forecasting."
-            )
-
-        # ====================================================
+        # -------------------------------------------------
         # PRODUCT DEMAND
-        # ====================================================
+        # -------------------------------------------------
 
-        product_sales = fetch_all("""
+        st.subheader("📦 Product Demand")
+
+        demand = query_df("""
             SELECT
                 p.product_name,
                 SUM(si.quantity) AS quantity_sold,
                 SUM(si.line_total) AS revenue
+
             FROM sale_items si
+
             JOIN products p
                 ON p.product_id = si.product_id
+
             GROUP BY p.product_name
+
             ORDER BY quantity_sold DESC;
         """)
 
-        if not product_sales.empty:
+        st.dataframe(
+            demand,
+            use_container_width=True
+        )
 
-            st.subheader(
-                "📦 Product Demand"
-            )
-
-            st.dataframe(
-                product_sales,
-                use_container_width=True
-            )
+        if not demand.empty:
 
             st.bar_chart(
-                product_sales.set_index(
+                demand.set_index(
                     "product_name"
                 )["quantity_sold"]
             )
 
-    # ========================================================
-    # FUTURE ML MODULES
-    # ========================================================
+    # -----------------------------------------------------
+    # INVESTMENT ANALYSIS
+    # -----------------------------------------------------
 
-    st.subheader("🚀 Planned ML Intelligence")
+    st.markdown("---")
+    st.subheader("💰 Investment Analysis")
 
-    st.markdown("""
-    **Sales Forecasting**
-    - Predict next-term revenue
-    - Predict monthly sales
+    investment = query_df("""
+        SELECT
+            i.investor_name,
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN ft.transaction_type =
+                        'Capital Contribution'
+                        THEN ft.amount
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS invested
 
-    **Demand Forecasting**
-    - Predict which uniforms will sell fastest
-    - Estimate quantities to bring in
+        FROM investors i
 
-    **Inventory Intelligence**
-    - Detect slow-moving stock
-    - Detect likely stock-outs
+        LEFT JOIN financial_transactions ft
+            ON ft.investor_id = i.investor_id
 
-    **Financial Forecasting**
-    - Forecast revenue
-    - Forecast profit
-    - Track return on capital
-
-    **Investment Analysis**
-    - Track capital growth
-    - Compare actual return against invested capital
-    - Estimate future returns based on historical performance
-
-    **School Analysis**
-    - Compare Loving Blooms and Waridi
-    - Identify stronger-selling products by school
-
-    The forecasts will become more reliable as the system collects more
-    real sales and financial data.
+        GROUP BY i.investor_name;
     """)
 
+    if not investment.empty:
 
-# ============================================================
-# FOOTER
-# ============================================================
+        total_investment = investment[
+            "invested"
+        ].sum()
 
-st.sidebar.divider()
-st.sidebar.caption("Uniform Sales POS")
-st.sidebar.caption("Fresh business cycle • 2 investors • Term-based tracking")
+        investment["ownership_percent"] = (
+            investment["invested"]
+            / total_investment
+            * 100
+        )
+
+        st.dataframe(
+            investment,
+            use_container_width=True
+        )
+
+    # -----------------------------------------------------
+    # FUTURE ML
+    # -----------------------------------------------------
+
+    st.markdown("---")
+
+    st.subheader("🚀 Planned Intelligence")
+
+    st.write("""
+    The system can later use machine learning for:
+
+    - Sales forecasting
+    - Product demand forecasting
+    - Stock replenishment prediction
+    - School-by-school sales analysis
+    - Profit forecasting
+    - Investment return analysis
+    - Seasonal demand patterns
+    - Identifying fast-moving and slow-moving products
+    """)
