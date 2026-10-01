@@ -88,7 +88,10 @@ def get_connection():
 
     except Exception as e:
 
-        st.error(f"Database connection failed: {e}")
+        st.error(
+            f"Database connection failed: {e}"
+        )
+
         return None
 
 
@@ -208,7 +211,11 @@ def setup_database():
                 category_name VARCHAR(100) NOT NULL,
                 product_id INT NOT NULL REFERENCES products(product_id),
                 price NUMERIC(10,2) NOT NULL DEFAULT 0,
-                UNIQUE (school_id, category_name, product_id)
+                UNIQUE (
+                    school_id,
+                    category_name,
+                    product_id
+                )
             );
         """)
 
@@ -238,7 +245,8 @@ def setup_database():
 
         cur.execute("""
             ALTER TABLE stock
-            ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,2) DEFAULT 0;
+            ADD COLUMN IF NOT EXISTS unit_cost
+            NUMERIC(10,2) DEFAULT 0;
         """)
 
         # ====================================================
@@ -324,9 +332,12 @@ def setup_database():
         for school in schools:
 
             cur.execute("""
-                INSERT INTO schools (school_name)
+                INSERT INTO schools (
+                    school_name
+                )
                 VALUES (%s)
-                ON CONFLICT (school_name) DO NOTHING;
+                ON CONFLICT (school_name)
+                DO NOTHING;
             """, (school,))
 
         # ====================================================
@@ -354,137 +365,197 @@ def setup_database():
         for product_name, price in products:
 
             cur.execute("""
-                INSERT INTO products
-                (product_name, price, cost_price)
-                SELECT %s, %s, 0
-                WHERE NOT EXISTS (
-                    SELECT 1
-                    FROM products
-                    WHERE product_name = %s
-                );
+                INSERT INTO products (
+                    product_name,
+                    price,
+                    cost_price
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    0
+                )
+                ON CONFLICT (product_name)
+                DO NOTHING;
             """, (
                 product_name,
-                price,
-                product_name
+                price
             ))
 
         # ====================================================
-        # INVESTORS — ONLY GIFT AND KEN
+        # INVESTORS
+        # ONLY GIFT AND KEN
         # ====================================================
 
         cur.execute("""
-            INSERT INTO investors
-            (investor_name, active)
-            VALUES ('Gift', TRUE)
+            INSERT INTO investors (
+                investor_name,
+                active
+            )
+            VALUES (
+                'Gift',
+                TRUE
+            )
             ON CONFLICT (investor_name)
-            DO UPDATE SET active = TRUE;
+            DO UPDATE SET
+                active = TRUE;
         """)
 
         cur.execute("""
-            INSERT INTO investors
-            (investor_name, active)
-            VALUES ('Ken', TRUE)
+            INSERT INTO investors (
+                investor_name,
+                active
+            )
+            VALUES (
+                'Ken',
+                TRUE
+            )
             ON CONFLICT (investor_name)
-            DO UPDATE SET active = TRUE;
+            DO UPDATE SET
+                active = TRUE;
         """)
 
-        # ====================================================
-        # DEACTIVATE ANY OTHER INVESTORS
-        # ====================================================
+        # Deactivate any previous investor names
+        # without deleting historical records.
 
         cur.execute("""
             UPDATE investors
             SET active = FALSE
-            WHERE investor_name NOT IN ('Gift', 'Ken');
+            WHERE investor_name NOT IN (
+                'Gift',
+                'Ken'
+            );
         """)
 
         # ====================================================
         # INITIAL CAPITAL
+        #
+        # IMPORTANT:
+        # Check each investor separately.
+        # This prevents Gift and Ken from showing 0
+        # simply because another capital transaction exists.
         # ====================================================
 
         cur.execute("""
-            SELECT COUNT(*)
-            FROM financial_transactions
-            WHERE transaction_type = 'Capital Contribution';
+            SELECT
+                investor_id
+            FROM investors
+            WHERE investor_name = 'Gift';
         """)
 
-        capital_count = cur.fetchone()[0]
+        gift_result = cur.fetchone()
 
-        if capital_count == 0:
+        cur.execute("""
+            SELECT
+                investor_id
+            FROM investors
+            WHERE investor_name = 'Ken';
+        """)
 
-            cur.execute("""
-                SELECT investor_id
-                FROM investors
-                WHERE investor_name = 'Gift';
-            """)
+        ken_result = cur.fetchone()
 
-            gift_id = cur.fetchone()[0]
+        if gift_result:
 
-            cur.execute("""
-                SELECT investor_id
-                FROM investors
-                WHERE investor_name = 'Ken';
-            """)
-
-            ken_id = cur.fetchone()[0]
-
-            # GIFT = 150,000
+            gift_id = gift_result[0]
 
             cur.execute("""
-                INSERT INTO financial_transactions
-                (
-                    transaction_type,
-                    category,
-                    description,
-                    amount,
-                    investor_id,
-                    year
-                )
-                VALUES
-                (
-                    'Capital Contribution',
-                    'Investment',
-                    'Initial investment by Gift',
-                    150000,
-                    %s,
-                    %s
-                );
-            """, (
-                gift_id,
-                datetime.now().year
-            ))
+                SELECT
+                    COALESCE(
+                        SUM(amount),
+                        0
+                    )
+                FROM financial_transactions
+                WHERE
+                    transaction_type =
+                    'Capital Contribution'
+                AND investor_id = %s;
+            """, (gift_id,))
 
-            # KEN = 100,000
+            gift_capital = float(
+                cur.fetchone()[0] or 0
+            )
+
+            if gift_capital == 0:
+
+                cur.execute("""
+                    INSERT INTO
+                        financial_transactions
+                    (
+                        transaction_type,
+                        category,
+                        description,
+                        amount,
+                        investor_id,
+                        year
+                    )
+                    VALUES
+                    (
+                        'Capital Contribution',
+                        'Investment',
+                        'Initial investment by Gift',
+                        150000,
+                        %s,
+                        %s
+                    );
+                """, (
+                    gift_id,
+                    datetime.now().year
+                ))
+
+        if ken_result:
+
+            ken_id = ken_result[0]
 
             cur.execute("""
-                INSERT INTO financial_transactions
-                (
-                    transaction_type,
-                    category,
-                    description,
-                    amount,
-                    investor_id,
-                    year
-                )
-                VALUES
-                (
-                    'Capital Contribution',
-                    'Investment',
-                    'Initial investment by Ken',
-                    100000,
-                    %s,
-                    %s
-                );
-            """, (
-                ken_id,
-                datetime.now().year
-            ))
+                SELECT
+                    COALESCE(
+                        SUM(amount),
+                        0
+                    )
+                FROM financial_transactions
+                WHERE
+                    transaction_type =
+                    'Capital Contribution'
+                AND investor_id = %s;
+            """, (ken_id,))
+
+            ken_capital = float(
+                cur.fetchone()[0] or 0
+            )
+
+            if ken_capital == 0:
+
+                cur.execute("""
+                    INSERT INTO
+                        financial_transactions
+                    (
+                        transaction_type,
+                        category,
+                        description,
+                        amount,
+                        investor_id,
+                        year
+                    )
+                    VALUES
+                    (
+                        'Capital Contribution',
+                        'Investment',
+                        'Initial investment by Ken',
+                        100000,
+                        %s,
+                        %s
+                    );
+                """, (
+                    ken_id,
+                    datetime.now().year
+                ))
 
         conn.commit()
 
     except Exception as e:
 
         conn.rollback()
+
         st.error(
             f"Database setup error: {e}"
         )
@@ -513,7 +584,10 @@ if "last_receipt" not in st.session_state:
 # HELPER FUNCTIONS
 # ============================================================
 
-def fetch_dataframe(query, params=None):
+def fetch_dataframe(
+    query,
+    params=None
+):
 
     conn = get_connection()
 
@@ -589,6 +663,9 @@ def execute_query(
 
 def money(value):
 
+    if value is None:
+        value = 0
+
     return f"KSh {float(value):,.2f}"
 
 
@@ -641,12 +718,15 @@ if page == "New Sale":
 
     school_name = st.selectbox(
         "School",
-        schools_df["school_name"].tolist()
+        schools_df[
+            "school_name"
+        ].tolist()
     )
 
     school_id = int(
         schools_df.loc[
-            schools_df["school_name"] == school_name,
+            schools_df["school_name"]
+            == school_name,
             "school_id"
         ].iloc[0]
     )
@@ -700,10 +780,14 @@ if page == "New Sale":
             spp.price
         FROM school_product_prices spp
         JOIN products p
-            ON spp.product_id = p.product_id
-        WHERE spp.school_id = %s
-        AND spp.category_name = %s
-        ORDER BY p.product_name;
+            ON spp.product_id =
+               p.product_id
+        WHERE
+            spp.school_id = %s
+        AND
+            spp.category_name = %s
+        ORDER BY
+            p.product_name;
     """, (
         school_id,
         category
@@ -712,22 +796,29 @@ if page == "New Sale":
     if products_df.empty:
 
         st.warning(
-            "No products have been assigned to this school yet."
+            "No products have been assigned "
+            "to this school yet."
         )
 
     else:
 
         product_name = st.selectbox(
             "Product",
-            products_df["product_name"].tolist()
+            products_df[
+                "product_name"
+            ].tolist()
         )
 
         selected_product = products_df[
-            products_df["product_name"] == product_name
+            products_df[
+                "product_name"
+            ] == product_name
         ].iloc[0]
 
         product_id = int(
-            selected_product["product_id"]
+            selected_product[
+                "product_id"
+            ]
         )
 
         unit_price = float(
@@ -760,12 +851,14 @@ if page == "New Sale":
                 "product_name": product_name,
                 "quantity": quantity,
                 "unit_price": unit_price,
-                "line_total": quantity * unit_price,
+                "line_total":
+                    quantity * unit_price,
                 "issued": issued
             })
 
             st.success(
-                f"{quantity} × {product_name} "
+                f"{quantity} × "
+                f"{product_name} "
                 "added to cart."
             )
 
@@ -838,9 +931,12 @@ if page == "New Sale":
 
                 conn = get_connection()
 
-                try:
+                if conn is None:
+                    st.stop()
 
-                    cur = conn.cursor()
+                cur = conn.cursor()
+
+                try:
 
                     # CUSTOMER
                     cur.execute("""
@@ -849,7 +945,8 @@ if page == "New Sale":
                             customer_name,
                             phone
                         )
-                        VALUES (%s, %s)
+                        VALUES
+                        (%s, %s)
                         RETURNING customer_id;
                     """, (
                         customer_name,
@@ -899,7 +996,9 @@ if page == "New Sale":
                     )
 
                     # SALE ITEMS
-                    for item in st.session_state.cart:
+                    for item in (
+                        st.session_state.cart
+                    ):
 
                         cur.execute("""
                             INSERT INTO sale_items
@@ -931,7 +1030,8 @@ if page == "New Sale":
 
                     # SALES INCOME
                     cur.execute("""
-                        INSERT INTO financial_transactions
+                        INSERT INTO
+                            financial_transactions
                         (
                             transaction_type,
                             category,
@@ -968,7 +1068,8 @@ if page == "New Sale":
                         "class": class_name,
                         "term": term,
                         "year": year,
-                        "payment_method": payment_method,
+                        "payment_method":
+                            payment_method,
                         "items": list(
                             st.session_state.cart
                         ),
@@ -1020,15 +1121,12 @@ if page == "New Sale":
                     <td>
                         {item['product_name']}
                     </td>
-
                     <td>
                         {item['quantity']}
                     </td>
-
                     <td>
                         KSh {item['unit_price']:,.2f}
                     </td>
-
                     <td>
                         KSh {item['line_total']:,.2f}
                     </td>
@@ -1037,7 +1135,6 @@ if page == "New Sale":
 
         receipt_html = f"""
         <html>
-
         <head>
 
         <style>
@@ -1151,23 +1248,10 @@ if page == "New Sale":
             <table>
 
                 <tr>
-
-                    <th>
-                        Item
-                    </th>
-
-                    <th>
-                        Qty
-                    </th>
-
-                    <th>
-                        Unit Price
-                    </th>
-
-                    <th>
-                        Total
-                    </th>
-
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Unit Price</th>
+                    <th>Total</th>
                 </tr>
 
                 {receipt_items}
@@ -1188,7 +1272,6 @@ if page == "New Sale":
         </div>
 
         </body>
-
         </html>
         """
 
@@ -1202,6 +1285,13 @@ if page == "New Sale":
             "🖨️ Print Receipt"
         ):
 
+            escaped_receipt = (
+                receipt_html
+                .replace("\\", "\\\\")
+                .replace("`", "\\`")
+                .replace("${", "\\${")
+            )
+
             st.components.v1.html(
                 f"""
                 <script>
@@ -1213,7 +1303,7 @@ if page == "New Sale":
                     );
 
                 receiptWindow.document.write(`
-                    {receipt_html.replace('`', '\\`')}
+                    {escaped_receipt}
                 `);
 
                 receiptWindow.document.close();
@@ -1246,14 +1336,25 @@ elif page == "Price Management":
         ORDER BY school_name;
     """)
 
+    if schools_df.empty:
+
+        st.warning(
+            "No schools found."
+        )
+
+        st.stop()
+
     school_name = st.selectbox(
         "School",
-        schools_df["school_name"].tolist()
+        schools_df[
+            "school_name"
+        ].tolist()
     )
 
     school_id = int(
         schools_df.loc[
-            schools_df["school_name"] == school_name,
+            schools_df["school_name"]
+            == school_name,
             "school_id"
         ].iloc[0]
     )
@@ -1277,10 +1378,14 @@ elif page == "Price Management":
             spp.price
         FROM school_product_prices spp
         JOIN products p
-            ON spp.product_id = p.product_id
-        WHERE spp.school_id = %s
-        AND spp.category_name = %s
-        ORDER BY p.product_name;
+            ON spp.product_id =
+               p.product_id
+        WHERE
+            spp.school_id = %s
+        AND
+            spp.category_name = %s
+        ORDER BY
+            p.product_name;
     """, (
         school_id,
         category
@@ -1371,8 +1476,9 @@ elif page == "Price Management":
     if not prices_df.empty:
 
         assigned_ids = (
-            prices_df["product_name"]
-            .tolist()
+            prices_df[
+                "product_name"
+            ].tolist()
         )
 
     available_products = all_products[
@@ -1391,8 +1497,9 @@ elif page == "Price Management":
         )
 
         product_row = available_products[
-            available_products["product_name"]
-            == selected_product
+            available_products[
+                "product_name"
+            ] == selected_product
         ].iloc[0]
 
         assign_price = st.number_input(
@@ -1428,7 +1535,8 @@ elif page == "Price Management":
                 )
 
                 DO UPDATE SET
-                    price = EXCLUDED.price;
+                    price =
+                        EXCLUDED.price;
             """, (
                 school_id,
                 category,
@@ -1531,14 +1639,21 @@ elif page == "Stock Management":
         ORDER BY school_name;
     """)
 
+    if schools_df.empty:
+        st.warning("No schools found.")
+        st.stop()
+
     school_name = st.selectbox(
         "School",
-        schools_df["school_name"].tolist()
+        schools_df[
+            "school_name"
+        ].tolist()
     )
 
     school_id = int(
         schools_df.loc[
-            schools_df["school_name"] == school_name,
+            schools_df["school_name"]
+            == school_name,
             "school_id"
         ].iloc[0]
     )
@@ -1551,6 +1666,10 @@ elif page == "Stock Management":
         ORDER BY product_name;
     """)
 
+    if products_df.empty:
+        st.warning("No products found.")
+        st.stop()
+
     product_name = st.selectbox(
         "Product",
         products_df[
@@ -1560,8 +1679,9 @@ elif page == "Stock Management":
 
     product_id = int(
         products_df.loc[
-            products_df["product_name"]
-            == product_name,
+            products_df[
+                "product_name"
+            ] == product_name,
             "product_id"
         ].iloc[0]
     )
@@ -1615,9 +1735,12 @@ elif page == "Stock Management":
 
         conn = get_connection()
 
-        try:
+        if conn is None:
+            st.stop()
 
-            cur = conn.cursor()
+        cur = conn.cursor()
+
+        try:
 
             cur.execute("""
                 INSERT INTO stock
@@ -1702,6 +1825,7 @@ elif page == "Stock Management":
     stock_df = fetch_dataframe("""
         SELECT
             p.product_name,
+
             SUM(
                 s.quantity_brought
             ) AS brought_in,
@@ -1717,12 +1841,11 @@ elif page == "Stock Management":
                     WHERE
                         si.product_id =
                         p.product_id
-
-                    AND sa.school_id =
+                    AND
+                        sa.school_id =
                         %s
-
-                    AND si.issued =
-                        TRUE
+                    AND
+                        si.issued = TRUE
                 ),
                 0
             ) AS sold,
@@ -1742,12 +1865,11 @@ elif page == "Stock Management":
                     WHERE
                         si.product_id =
                         p.product_id
-
-                    AND sa.school_id =
+                    AND
+                        sa.school_id =
                         %s
-
-                    AND si.issued =
-                        TRUE
+                    AND
+                        si.issued = TRUE
                 ),
                 0
             ) AS remaining,
@@ -1828,16 +1950,23 @@ elif page == "Tailor & Production":
         ORDER BY school_name;
     """)
 
+    if schools_df.empty:
+        st.warning("No schools found.")
+        st.stop()
+
     school_name = st.selectbox(
         "School",
-        schools_df["school_name"].tolist(),
+        schools_df[
+            "school_name"
+        ].tolist(),
         key="tailor_school"
     )
 
     school_id = int(
         schools_df.loc[
-            schools_df["school_name"]
-            == school_name,
+            schools_df[
+                "school_name"
+            ] == school_name,
             "school_id"
         ].iloc[0]
     )
@@ -1850,6 +1979,10 @@ elif page == "Tailor & Production":
         ORDER BY product_name;
     """)
 
+    if products_df.empty:
+        st.warning("No products found.")
+        st.stop()
+
     product_name = st.selectbox(
         "Item Produced",
         products_df[
@@ -1859,8 +1992,9 @@ elif page == "Tailor & Production":
 
     product_id = int(
         products_df.loc[
-            products_df["product_name"]
-            == product_name,
+            products_df[
+                "product_name"
+            ] == product_name,
             "product_id"
         ].iloc[0]
     )
@@ -1944,9 +2078,12 @@ elif page == "Tailor & Production":
 
             conn = get_connection()
 
-            try:
+            if conn is None:
+                st.stop()
 
-                cur = conn.cursor()
+            cur = conn.cursor()
+
+            try:
 
                 cur.execute("""
                     INSERT INTO
@@ -2011,11 +2148,8 @@ elif page == "Tailor & Production":
                     f"{tailor_name} - "
                     f"{quantity_produced} × "
                     f"{product_name}",
-
                     total_tailor_payment,
-
                     term,
-
                     year
                 ))
 
@@ -2074,7 +2208,7 @@ elif page == "Tailor & Production":
         ORDER BY
             tp.production_date DESC;
     """, (
-        school_id
+        school_id,
     ))
 
     if production_df.empty:
@@ -2088,22 +2222,21 @@ elif page == "Tailor & Production":
 
         for _, row in production_df.iterrows():
 
-            product_id_row = fetch_dataframe("""
+            prod_product_id = fetch_dataframe("""
                 SELECT
                     product_id
                 FROM products
                 WHERE
-                    product_name =
-                    %s;
+                    product_name = %s;
             """, (
                 row["product_name"],
             ))
 
-            if product_id_row.empty:
+            if prod_product_id.empty:
                 continue
 
             prod_product_id = int(
-                product_id_row.iloc[0][
+                prod_product_id.iloc[0][
                     "product_id"
                 ]
             )
@@ -2125,14 +2258,15 @@ elif page == "Tailor & Production":
                     si.product_id =
                     %s
 
-                AND sa.school_id =
+                AND
+                    sa.school_id =
                     %s
 
-                AND si.issued =
-                    TRUE
+                AND
+                    si.issued = TRUE
 
-                AND sa.sale_date >=
-                    %s;
+                AND
+                    sa.sale_date >= %s;
             """, (
                 prod_product_id,
                 school_id,
@@ -2251,10 +2385,9 @@ elif page == "Tailor & Production":
         FROM tailor_production
 
         WHERE
-            school_id =
-            %s;
+            school_id = %s;
     """, (
-        school_id
+        school_id,
     ))
 
     if not totals_df.empty:
@@ -2303,7 +2436,7 @@ elif page == "Business Finance":
     )
 
     # ========================================================
-    # ONLY TWO INVESTORS
+    # INVESTORS
     # ========================================================
 
     investors_df = fetch_dataframe("""
@@ -2335,7 +2468,8 @@ elif page == "Business Finance":
         WHERE
             i.active = TRUE
 
-        AND i.investor_name
+        AND
+            i.investor_name
             IN ('Gift', 'Ken')
 
         GROUP BY
@@ -2360,7 +2494,6 @@ elif page == "Business Finance":
         "👥 Investors"
     )
 
-    # Force the display order
     investor_order = {
         "Gift": 1,
         "Ken": 2
@@ -2372,13 +2505,27 @@ elif page == "Business Finance":
             "order"
         ] = investors_df[
             "investor_name"
-        ].map(investor_order)
+        ].map(
+            investor_order
+        )
 
         investors_df = (
             investors_df
             .sort_values("order")
-            .drop(columns=["order"])
+            .drop(
+                columns=["order"]
+            )
         )
+
+        # Make absolutely sure values are numeric.
+        investors_df[
+            "contribution"
+        ] = pd.to_numeric(
+            investors_df[
+                "contribution"
+            ],
+            errors="coerce"
+        ).fillna(0)
 
         total_investment = (
             investors_df[
@@ -2404,7 +2551,7 @@ elif page == "Business Finance":
 
             investors_df[
                 "ownership_%"
-            ] = 0
+            ] = 0.0
 
         display_df = investors_df[
             [
@@ -2426,7 +2573,7 @@ elif page == "Business Finance":
             "ownership_%"
         ].apply(
             lambda x:
-            f"{x:.2f}%"
+            f"{float(x):.2f}%"
         )
 
         st.dataframe(
@@ -2462,48 +2609,59 @@ elif page == "Business Finance":
             "Record Investment"
         ):
 
-            investor_id = int(
-                investors_df.loc[
-                    investors_df[
-                        "investor_name"
-                    ] == investor,
-                    "investor_id"
-                ].iloc[0]
-            )
+            investor_row = investors_df.loc[
+                investors_df[
+                    "investor_name"
+                ] == investor
+            ]
 
-            execute_query("""
-                INSERT INTO
-                    financial_transactions
-                (
-                    transaction_type,
-                    category,
-                    description,
+            if investor_row.empty:
+
+                st.error(
+                    "Investor not found."
+                )
+
+            else:
+
+                investor_id = int(
+                    investor_row.iloc[0][
+                        "investor_id"
+                    ]
+                )
+
+                execute_query("""
+                    INSERT INTO
+                        financial_transactions
+                    (
+                        transaction_type,
+                        category,
+                        description,
+                        amount,
+                        investor_id,
+                        year
+                    )
+                    VALUES
+                    (
+                        'Capital Contribution',
+                        'Investment',
+                        %s,
+                        %s,
+                        %s,
+                        %s
+                    );
+                """, (
+                    f"Additional investment "
+                    f"by {investor}",
                     amount,
                     investor_id,
-                    year
+                    datetime.now().year
+                ))
+
+                st.success(
+                    "Investment recorded."
                 )
-                VALUES
-                (
-                    'Capital Contribution',
-                    'Investment',
-                    %s,
-                    %s,
-                    %s,
-                    %s
-                );
-            """, (
-                f"Additional investment "
-                f"by {investor}",
-                amount,
-                investor_id,
-                datetime.now().year
-            ))
 
-            st.success(
-                "Investment recorded."
-            )
-
-            st.rerun()
+                st.rerun()
 
     # ========================================================
     # FINANCIAL TRANSACTION
@@ -2592,6 +2750,7 @@ elif page == "Business Finance":
     finance_df = fetch_dataframe("""
         SELECT
             transaction_type,
+
             COALESCE(
                 SUM(amount),
                 0
@@ -2712,7 +2871,6 @@ elif page == "Business Finance":
         else 0
     )
 
-    # CASH POSITION
     cash_position = (
         capital
         +
@@ -2757,9 +2915,7 @@ elif page == "Business Finance":
 
     st.metric(
         "Inventory Purchased",
-        money(
-            purchased_inventory
-        )
+        money(purchased_inventory)
     )
 
     row1 = st.columns(4)
@@ -2870,7 +3026,7 @@ elif page == "Business Finance":
             "ownership_%"
         ].apply(
             lambda x:
-            f"{x:.2f}%"
+            f"{float(x):.2f}%"
         )
 
         share_df[
@@ -2996,6 +3152,7 @@ elif page == "Sales Overview":
     school_sales = fetch_dataframe("""
         SELECT
             s.school_name,
+
             SUM(
                 sa.total_amount
             ) AS revenue
@@ -3034,6 +3191,7 @@ elif page == "Sales Overview":
         SELECT
             year,
             term,
+
             SUM(
                 total_amount
             ) AS revenue
@@ -3211,7 +3369,8 @@ elif page == "ML & Forecasting":
         WHERE
             i.active = TRUE
 
-        AND i.investor_name
+        AND
+            i.investor_name
             IN ('Gift', 'Ken')
 
         GROUP BY
@@ -3226,10 +3385,21 @@ elif page == "ML & Forecasting":
                 WHEN i.investor_name =
                     'Ken'
                 THEN 2
+
+                ELSE 3
             END;
     """)
 
     if not investment_df.empty:
+
+        investment_df[
+            "contribution"
+        ] = pd.to_numeric(
+            investment_df[
+                "contribution"
+            ],
+            errors="coerce"
+        ).fillna(0)
 
         total = (
             investment_df[
@@ -3249,6 +3419,21 @@ elif page == "ML & Forecasting":
                 total
                 *
                 100
+            )
+
+            investment_df[
+                "contribution"
+            ] = investment_df[
+                "contribution"
+            ].apply(money)
+
+            investment_df[
+                "ownership_%"
+            ] = investment_df[
+                "ownership_%"
+            ].apply(
+                lambda x:
+                f"{float(x):.2f}%"
             )
 
             st.dataframe(
@@ -3321,6 +3506,7 @@ elif page == "ML & Forecasting":
     demand_df = fetch_dataframe("""
         SELECT
             p.product_name,
+
             SUM(
                 si.quantity
             ) AS quantity_sold
