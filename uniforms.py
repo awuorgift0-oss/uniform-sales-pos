@@ -1042,51 +1042,129 @@ elif menu == "Price Management":
 # ============================================================
 
 elif menu == "Stock Management":
+st.header("📦 Stock Management")
 
-    st.title("Stock Management")
-    st.caption(
-        "Track items sold and items still pending issue."
+# Select school
+school_options = get_schools()
+stock_school = st.selectbox(
+    "Select School",
+    school_options,
+    key="stock_school"
+)
+
+stock_school_id = stock_school[0]
+
+# Get products assigned to this school
+stock_products = fetch_all(
+    """
+    SELECT
+        spp.product_id,
+        p.product_name,
+        spp.price
+    FROM school_product_prices spp
+    JOIN products p ON spp.product_id = p.product_id
+    WHERE spp.school_id = %s
+    ORDER BY p.product_name
+    """,
+    (stock_school_id,)
+)
+
+if not stock_products:
+    st.warning("No products have been assigned to this school yet.")
+else:
+
+    st.subheader("Add Uniforms Brought In")
+
+    product_options = {
+        row[1]: row[0]
+        for row in stock_products
+    }
+
+    selected_product = st.selectbox(
+        "Uniform",
+        list(product_options.keys())
     )
 
-    stock = fetch_all("""
+    quantity_brought = st.number_input(
+        "Quantity Brought In",
+        min_value=1,
+        step=1
+    )
+
+    if st.button("Add Stock"):
+        execute_query(
+            """
+            INSERT INTO stock
+            (school_id, product_id, quantity_brought)
+            VALUES (%s, %s, %s)
+            """,
+            (
+                stock_school_id,
+                product_options[selected_product],
+                quantity_brought
+            )
+        )
+
+        st.success("Stock added successfully!")
+        st.rerun()
+
+    st.subheader("Current Stock")
+
+    stock_data = fetch_all(
+        """
         SELECT
-            p.product_name AS item,
-            SUM(si.quantity) AS units_sold,
-            SUM(
-                CASE
-                    WHEN si.issued = FALSE
-                    THEN si.quantity
-                    ELSE 0
-                END
-            ) AS units_pending
-        FROM sale_items si
-        JOIN products p
-            ON p.product_id = si.product_id
-        GROUP BY p.product_name
+            p.product_name,
+            COALESCE(SUM(st.quantity_brought), 0) AS brought_in,
+            COALESCE(
+                (
+                    SELECT SUM(si.quantity)
+                    FROM sale_items si
+                    JOIN sales s ON si.sale_id = s.sale_id
+                    WHERE s.school_id = %s
+                    AND si.product_id = p.product_id
+                    AND si.issued = TRUE
+                ), 0
+            ) AS sold
+        FROM products p
+        LEFT JOIN stock st
+            ON st.product_id = p.product_id
+            AND st.school_id = %s
+        WHERE p.product_id IN (
+            SELECT product_id
+            FROM school_product_prices
+            WHERE school_id = %s
+        )
+        GROUP BY p.product_id, p.product_name
         ORDER BY p.product_name
-    """)
-
-    if stock.empty:
-
-        st.info(
-            "No sales have been recorded yet."
+        """,
+        (
+            stock_school_id,
+            stock_school_id,
+            stock_school_id
         )
+    )
 
-    else:
+    stock_table = []
 
-        stock["units_sold"] = (
-            stock["units_sold"].fillna(0)
-        )
+    for row in stock_data:
+        product_name = row[0]
+        brought_in = int(row[1])
+        sold = int(row[2])
+        remaining = brought_in - sold
 
-        stock["units_pending"] = (
-            stock["units_pending"].fillna(0)
-        )
+        stock_table.append({
+            "Uniform": product_name,
+            "Brought In": brought_in,
+            "Sold": sold,
+            "Remaining": remaining
+        })
 
-        st.dataframe(
-            stock,
-            use_container_width=True,
-            hide_index=True
-        )
+    st.dataframe(
+        pd.DataFrame(stock_table),
+        use_container_width=True,
+        hide_index=True
+    )
+     
 
 
 # ============================================================
