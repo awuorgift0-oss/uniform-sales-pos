@@ -1042,7 +1042,7 @@ elif menu == "Price Management":
 # ============================================================
 
 elif menu == "Stock Management":
-st.header("📦 Stock Management")
+   st.header("📦 Stock Management")
 
 # Select school
 school_options = get_schools()
