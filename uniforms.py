@@ -102,39 +102,44 @@ footer {visibility: hidden;}
     margin-bottom: 22px;
 }
 
-.metric-card {
+/* ---- KPI CARDS (native st.metric, colored via CSS) ---- */
+
+div[data-testid="stMetric"] {
     background: white;
-    padding: 20px 22px;
     border-radius: 16px;
+    padding: 18px 22px;
     box-shadow: 0 6px 18px rgba(11,31,58,0.08);
     border-left: 5px solid #f28c28;
 }
 
-.metric-card.blue {
-    border-left-color: #3b82f6;
+div[data-testid="stMetric"] label {
+    color: #64748b !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    letter-spacing: 1px !important;
+    text-transform: uppercase !important;
 }
 
-.metric-card.green {
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+    color: #0b1f3a !important;
+    font-size: 26px !important;
+    font-weight: 800 !important;
+}
+
+div[data-testid="column"]:nth-child(1) div[data-testid="stMetric"] {
+    border-left-color: #f28c28;
+}
+
+div[data-testid="column"]:nth-child(2) div[data-testid="stMetric"] {
     border-left-color: #10b981;
 }
 
-.metric-card.purple {
+div[data-testid="column"]:nth-child(3) div[data-testid="stMetric"] {
+    border-left-color: #3b82f6;
+}
+
+div[data-testid="column"]:nth-child(4) div[data-testid="stMetric"] {
     border-left-color: #8b5cf6;
-}
-
-.metric-title {
-    color: #64748b;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-}
-
-.metric-value {
-    color: #0b1f3a;
-    font-size: 26px;
-    font-weight: 800;
-    margin-top: 6px;
 }
 
 .stButton > button {
@@ -653,21 +658,9 @@ def setup_database():
         """)
 
         # =================================================
-        # FK MIGRATION — ensure cascade behaviour
-        #
-        # Old databases may have these constraints without
-        # ON DELETE CASCADE. This block checks each one and
-        # replaces it if the cascade flag is missing.
-        #
-        # confdeltype:
-        #   'c' = CASCADE
-        #   'a' = NO ACTION
-        #   'r' = RESTRICT
-        #   'n' = SET NULL
-        #   'd' = SET DEFAULT
+        # FK MIGRATION — enforce ON DELETE CASCADE
         # =================================================
 
-        # ---- sale_items.sale_id -> sales ----
         cur.execute("""
             DO $$
             BEGIN
@@ -699,7 +692,6 @@ def setup_database():
             END $$;
         """)
 
-        # ---- financial_transactions.sale_id -> sales ----
         cur.execute("""
             DO $$
             BEGIN
@@ -731,7 +723,6 @@ def setup_database():
             END $$;
         """)
 
-        # ---- financial_transactions.stock_id -> stock ----
         cur.execute("""
             DO $$
             BEGIN
@@ -763,7 +754,6 @@ def setup_database():
             END $$;
         """)
 
-        # ---- financial_transactions.production_id -> tailor_production ----
         cur.execute("""
             DO $$
             BEGIN
@@ -1329,82 +1319,30 @@ if page == "Dashboard":
         AND si.issued=TRUE;
     """)
 
-    c1,c2,c3,c4 = st.columns(4)
+    c1, c2, c3, c4 = st.columns(4)
 
     with c1:
-
-        st.markdown(
-            f"""
-            <div class="metric-card">
-
-                <div class="metric-title">
-                    Today's Sales
-                </div>
-
-                <div class="metric-value">
-                    {money(today_sales.iloc[0]['value'])}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.metric(
+            "Today's Sales",
+            money(today_sales.iloc[0]["value"])
         )
 
     with c2:
-
-        st.markdown(
-            f"""
-            <div class="metric-card green">
-
-                <div class="metric-title">
-                    This Month
-                </div>
-
-                <div class="metric-value">
-                    {money(month_sales.iloc[0]['value'])}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.metric(
+            "This Month",
+            money(month_sales.iloc[0]["value"])
         )
 
     with c3:
-
-        st.markdown(
-            f"""
-            <div class="metric-card blue">
-
-                <div class="metric-title">
-                    Today's Transactions
-                </div>
-
-                <div class="metric-value">
-                    {int(transactions.iloc[0]['value'])}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.metric(
+            "Today's Transactions",
+            int(transactions.iloc[0]["value"])
         )
 
     with c4:
-
-        st.markdown(
-            f"""
-            <div class="metric-card purple">
-
-                <div class="metric-title">
-                    Items Sold Today
-                </div>
-
-                <div class="metric-value">
-                    {int(items.iloc[0]['value'])}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True
+        st.metric(
+            "Items Sold Today",
+            int(items.iloc[0]["value"])
         )
 
     st.markdown("### ⚡ Quick Actions")
@@ -1812,10 +1750,6 @@ elif page == "New Sale":
 
                         cur = conn.cursor()
 
-                        # ---------------------------------
-                        # CHECK STOCK
-                        # ---------------------------------
-
                         for item in st.session_state.cart:
 
                             cur.execute("""
@@ -1873,10 +1807,6 @@ elif page == "New Sale":
                                     f"{available_stock}"
                                 )
 
-                        # ---------------------------------
-                        # CUSTOMER
-                        # ---------------------------------
-
                         cur.execute("""
                             INSERT INTO customers
                             (customer_name, phone)
@@ -1888,10 +1818,6 @@ elif page == "New Sale":
                         ))
 
                         customer_id = cur.fetchone()[0]
-
-                        # ---------------------------------
-                        # SALE
-                        # ---------------------------------
 
                         cur.execute("""
                             INSERT INTO sales
@@ -1921,10 +1847,6 @@ elif page == "New Sale":
 
                         sale_id = cur.fetchone()[0]
 
-                        # ---------------------------------
-                        # ITEMS
-                        # ---------------------------------
-
                         for item in st.session_state.cart:
 
                             cur.execute("""
@@ -1947,10 +1869,6 @@ elif page == "New Sale":
                                 item["line_total"],
                                 item["issued"]
                             ))
-
-                        # ---------------------------------
-                        # FINANCE
-                        # ---------------------------------
 
                         cur.execute("""
                             INSERT INTO financial_transactions
