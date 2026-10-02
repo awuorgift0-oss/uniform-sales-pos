@@ -102,8 +102,6 @@ footer {visibility: hidden;}
     margin-bottom: 22px;
 }
 
-/* ---- KPI CARDS (native st.metric, colored via CSS) ---- */
-
 div[data-testid="stMetric"] {
     background: white;
     border-radius: 16px;
