@@ -3,7 +3,7 @@ import psycopg2
 import pandas as pd
 from datetime import datetime
 import streamlit.components.v1 as components
-from decimal import Decimal
+import base64
 
 
 # =========================================================
@@ -19,7 +19,7 @@ st.set_page_config(
 
 
 # =========================================================
-# CSS — MAKE STREAMLIT LOOK LIKE AN ACTUAL APPLICATION
+# CSS — COLORFUL, APP-LIKE INTERFACE
 # =========================================================
 
 st.markdown("""
@@ -29,106 +29,202 @@ st.markdown("""
 footer {visibility: hidden;}
 [data-testid="stToolbar"] {visibility: hidden;}
 
+/* ---- COLORFUL ANIMATED BACKGROUND ---- */
 .stApp {
-    background: #eef4f8;
+    background: linear-gradient(
+        -45deg,
+        #eef4f8,
+        #fef3c7,
+        #e0e7ff,
+        #d1fae5,
+        #fce7f3
+    );
+    background-size: 400% 400%;
+    animation: gradientShift 25s ease infinite;
 }
 
+@keyframes gradientShift {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* ---- SIDEBAR ---- */
 [data-testid="stSidebar"] {
-    background: #0b1f3a;
+    background: linear-gradient(180deg, #0b1f3a 0%, #1e3a8a 100%);
 }
 
 [data-testid="stSidebar"] * {
     color: white !important;
 }
 
-.main-title {
-    font-size: 28px;
-    font-weight: 800;
-    color: #0b1f3a;
-    margin-bottom: 5px;
+[data-testid="stSidebar"] .stRadio label {
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
 }
 
-.subtitle {
-    color: #64748b;
-    font-size: 14px;
-    margin-bottom: 25px;
+[data-testid="stSidebar"] .stRadio label:hover {
+    background: rgba(255,255,255,0.1);
 }
 
+/* ---- MAIN HEADER ---- */
 .app-header {
-    background: linear-gradient(135deg, #0b1f3a, #163b68);
-    padding: 22px 28px;
-    border-radius: 14px;
+    background: linear-gradient(135deg, #0b1f3a 0%, #1e3a8a 50%, #7c3aed 100%);
+    padding: 28px 32px;
+    border-radius: 18px;
     color: white;
     margin-bottom: 25px;
+    box-shadow: 0 10px 30px rgba(11,31,58,0.25);
+    position: relative;
+    overflow: hidden;
+}
+
+.app-header::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(242,140,40,0.35), transparent 70%);
+    border-radius: 50%;
 }
 
 .app-header h1 {
     color: white;
     margin: 0;
-    font-size: 27px;
+    font-size: 28px;
+    position: relative;
+    z-index: 1;
 }
 
 .app-header p {
-    margin: 5px 0 0 0;
+    margin: 6px 0 0 0;
     color: #dbeafe;
+    position: relative;
+    z-index: 1;
 }
 
+/* ---- MAIN TITLE ---- */
+.main-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: #0b1f3a;
+    margin-bottom: 4px;
+}
+
+.subtitle {
+    color: #475569;
+    font-size: 14px;
+    margin-bottom: 22px;
+}
+
+/* ---- METRIC CARDS ---- */
 .metric-card {
     background: white;
-    padding: 20px;
-    border-radius: 14px;
-    box-shadow: 0 3px 12px rgba(0,0,0,0.06);
-    border: 1px solid #e2e8f0;
+    padding: 20px 22px;
+    border-radius: 16px;
+    box-shadow: 0 6px 18px rgba(11,31,58,0.08);
+    border-left: 5px solid #f28c28;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
+
+.metric-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 26px rgba(11,31,58,0.15);
+}
+
+.metric-card.blue   { border-left-color: #3b82f6; }
+.metric-card.green  { border-left-color: #10b981; }
+.metric-card.purple { border-left-color: #8b5cf6; }
+.metric-card.pink   { border-left-color: #ec4899; }
 
 .metric-title {
     color: #64748b;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
 }
 
 .metric-value {
     color: #0b1f3a;
     font-size: 26px;
     font-weight: 800;
-    margin-top: 5px;
+    margin-top: 6px;
 }
 
+/* ---- SECTION CARDS ---- */
 .section-card {
-    background: white;
-    padding: 20px;
-    border-radius: 14px;
-    box-shadow: 0 3px 12px rgba(0,0,0,0.05);
+    background: rgba(255,255,255,0.9);
+    padding: 22px;
+    border-radius: 16px;
+    box-shadow: 0 6px 18px rgba(11,31,58,0.06);
     border: 1px solid #e2e8f0;
     margin-bottom: 20px;
+    backdrop-filter: blur(6px);
 }
 
-.receipt-box {
-    background: white;
-    padding: 25px;
+/* ---- BUTTONS ---- */
+.stButton > button {
+    background: linear-gradient(135deg, #f28c28, #d97706);
+    color: white;
+    border: none;
     border-radius: 10px;
-    border: 1px solid #ddd;
-}
-
-button[kind="primary"] {
-    background: #f28c28;
-    border-color: #f28c28;
-}
-
-button[kind="primary"]:hover {
-    background: #d97706;
-    border-color: #d97706;
-}
-
-.low-stock {
-    color: #dc2626;
     font-weight: 700;
+    padding: 10px 18px;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 10px rgba(242,140,40,0.25);
 }
 
-.good-stock {
-    color: #15803d;
-    font-weight: 700;
+.stButton > button:hover {
+    background: linear-gradient(135deg, #d97706, #b45309);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(242,140,40,0.35);
 }
+
+/* ---- TABS ---- */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 6px;
+    background: rgba(255,255,255,0.6);
+    border-radius: 12px;
+    padding: 6px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-weight: 600;
+}
+
+.stTabs [aria-selected="true"] {
+    background: linear-gradient(135deg, #0b1f3a, #1e3a8a) !important;
+    color: white !important;
+}
+
+/* ---- DATAFRAMES ---- */
+[data-testid="stDataFrame"] {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+/* ---- INPUTS ---- */
+.stTextInput input,
+.stNumberInput input,
+.stSelectbox div[data-baseweb="select"] {
+    border-radius: 8px !important;
+}
+
+/* ---- ALERTS ---- */
+[data-testid="stAlert"] {
+    border-radius: 12px;
+}
+
+/* ---- LOW / GOOD STOCK HIGHLIGHT ---- */
+.low-stock { color: #dc2626; font-weight: 700; }
+.good-stock { color: #15803d; font-weight: 700; }
 
 </style>
 """, unsafe_allow_html=True)
@@ -141,7 +237,6 @@ button[kind="primary"]:hover {
 def get_connection():
     try:
         db = st.secrets["postgres"]
-
         return psycopg2.connect(
             host=db["host"],
             port=db["port"],
@@ -150,7 +245,6 @@ def get_connection():
             password=db["password"],
             sslmode=db.get("sslmode", "require")
         )
-
     except Exception as e:
         st.error(f"Database connection failed: {e}")
         st.stop()
@@ -161,41 +255,47 @@ def get_connection():
 # =========================================================
 
 def execute_query(query, params=None, fetch=False):
+    """
+    Executes a query. Re-raises exceptions so callers can
+    handle FK violations and other errors explicitly.
+    Returns fetched rows if fetch=True, else None.
+    """
     conn = get_connection()
-
     try:
         cur = conn.cursor()
         cur.execute(query, params or ())
-
-        if fetch:
-            result = cur.fetchall()
-        else:
-            result = None
-
+        result = cur.fetchall() if fetch else None
         conn.commit()
         cur.close()
-
         return result
-
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        st.error(f"Database error: {e}")
-        return None
-
+        raise
     finally:
         conn.close()
 
 
+def safe_execute(query, params=None, fetch=False,
+                 error_message="Operation failed."):
+    """
+    Wrapper that catches exceptions and shows a Streamlit error.
+    Returns (success: bool, result).
+    """
+    try:
+        result = execute_query(query, params, fetch)
+        return True, result
+    except Exception as e:
+        st.error(f"{error_message}\n\n{e}")
+        return False, None
+
+
 def fetch_dataframe(query, params=None):
     conn = get_connection()
-
     try:
         return pd.read_sql_query(query, conn, params=params)
-
     except Exception as e:
         st.error(f"Database error: {e}")
         return pd.DataFrame()
-
     finally:
         conn.close()
 
@@ -205,6 +305,18 @@ def money(value):
         return f"KSh {float(value):,.2f}"
     except Exception:
         return "KSh 0.00"
+
+
+def log_action(action, entity, entity_id, details=""):
+    """Write to audit log. Silently ignore failures."""
+    try:
+        execute_query("""
+            INSERT INTO audit_log
+            (action, entity, entity_id, details)
+            VALUES (%s, %s, %s, %s);
+        """, (action, entity, entity_id, details))
+    except Exception:
+        pass
 
 
 # =========================================================
@@ -218,10 +330,7 @@ def setup_database():
     try:
         cur = conn.cursor()
 
-        # -------------------------------------------------
-        # SCHOOLS
-        # -------------------------------------------------
-
+        # ---- SCHOOLS ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS schools (
                 school_id SERIAL PRIMARY KEY,
@@ -229,10 +338,7 @@ def setup_database():
             );
         """)
 
-        # -------------------------------------------------
-        # PRODUCTS
-        # -------------------------------------------------
-
+        # ---- PRODUCTS ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS products (
                 product_id SERIAL PRIMARY KEY,
@@ -242,10 +348,7 @@ def setup_database():
             );
         """)
 
-        # -------------------------------------------------
-        # CUSTOMERS
-        # -------------------------------------------------
-
+        # ---- CUSTOMERS ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS customers (
                 customer_id SERIAL PRIMARY KEY,
@@ -254,10 +357,7 @@ def setup_database():
             );
         """)
 
-        # -------------------------------------------------
-        # SALES
-        # -------------------------------------------------
-
+        # ---- SALES ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sales (
                 sale_id SERIAL PRIMARY KEY,
@@ -273,10 +373,12 @@ def setup_database():
             );
         """)
 
-        # -------------------------------------------------
-        # SALE ITEMS
-        # -------------------------------------------------
+        cur.execute("""
+            ALTER TABLE sales
+            ADD COLUMN IF NOT EXISTS class_name VARCHAR(50);
+        """)
 
+        # ---- SALE ITEMS ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sale_items (
                 sale_item_id SERIAL PRIMARY KEY,
@@ -289,10 +391,7 @@ def setup_database():
             );
         """)
 
-        # -------------------------------------------------
-        # SCHOOL PRODUCT PRICES
-        # -------------------------------------------------
-
+        # ---- SCHOOL PRODUCT PRICES ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS school_product_prices (
                 school_product_price_id SERIAL PRIMARY KEY,
@@ -304,10 +403,7 @@ def setup_database():
             );
         """)
 
-        # -------------------------------------------------
-        # STOCK
-        # -------------------------------------------------
-
+        # ---- STOCK ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS stock (
                 stock_id SERIAL PRIMARY KEY,
@@ -321,10 +417,7 @@ def setup_database():
             );
         """)
 
-        # -------------------------------------------------
-        # UNIFORM SETS
-        # -------------------------------------------------
-
+        # ---- UNIFORM SETS ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS uniform_sets (
                 set_id SERIAL PRIMARY KEY,
@@ -342,10 +435,7 @@ def setup_database():
             );
         """)
 
-        # -------------------------------------------------
-        # INVESTORS
-        # -------------------------------------------------
-
+        # ---- INVESTORS ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS investors (
                 investor_id SERIAL PRIMARY KEY,
@@ -354,10 +444,24 @@ def setup_database():
             );
         """)
 
-        # -------------------------------------------------
-        # FINANCIAL TRANSACTIONS
-        # -------------------------------------------------
+        # ---- TAILOR PRODUCTION (must exist before FK below) ----
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tailor_production (
+                production_id SERIAL PRIMARY KEY,
+                school_id INT REFERENCES schools(school_id),
+                product_id INT REFERENCES products(product_id),
+                tailor_name VARCHAR(150),
+                quantity_produced INT,
+                cost_per_item NUMERIC(12,2),
+                amount_paid NUMERIC(12,2),
+                production_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                term VARCHAR(30),
+                year INT,
+                notes TEXT
+            );
+        """)
 
+        # ---- FINANCIAL TRANSACTIONS ----
         cur.execute("""
             CREATE TABLE IF NOT EXISTS financial_transactions (
                 transaction_id SERIAL PRIMARY KEY,
@@ -372,7 +476,7 @@ def setup_database():
             );
         """)
 
-        # Add source references to finance table
+        # Add source FKs AFTER all referenced tables exist.
         cur.execute("""
             ALTER TABLE financial_transactions
             ADD COLUMN IF NOT EXISTS sale_id INT
@@ -391,47 +495,19 @@ def setup_database():
             REFERENCES tailor_production(production_id) ON DELETE CASCADE;
         """)
 
-        # -------------------------------------------------
-        # TAILOR PRODUCTION
-        # -------------------------------------------------
-
+        # ---- AUDIT LOG ----
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS tailor_production (
-                production_id SERIAL PRIMARY KEY,
-                school_id INT REFERENCES schools(school_id),
-                product_id INT REFERENCES products(product_id),
-                tailor_name VARCHAR(150),
-                quantity_produced INT,
-                cost_per_item NUMERIC(12,2),
-                amount_paid NUMERIC(12,2),
-                production_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                term VARCHAR(30),
-                year INT,
-                notes TEXT
+            CREATE TABLE IF NOT EXISTS audit_log (
+                log_id SERIAL PRIMARY KEY,
+                log_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                action VARCHAR(50),
+                entity VARCHAR(50),
+                entity_id INT,
+                details TEXT
             );
         """)
 
-        # The FK above can fail if production table doesn't exist yet.
-        # Ensure source reference exists after table creation.
-        cur.execute("""
-            ALTER TABLE financial_transactions
-            ADD COLUMN IF NOT EXISTS production_id INT
-            REFERENCES tailor_production(production_id) ON DELETE CASCADE;
-        """)
-
-        # -------------------------------------------------
-        # ENSURE CLASS COLUMN EXISTS FOR OLD DATABASES
-        # -------------------------------------------------
-
-        cur.execute("""
-            ALTER TABLE sales
-            ADD COLUMN IF NOT EXISTS class_name VARCHAR(50);
-        """)
-
-        # -------------------------------------------------
-        # REAL SCHOOLS
-        # -------------------------------------------------
-
+        # ---- SEED SCHOOLS ----
         cur.execute("""
             INSERT INTO schools (school_name)
             VALUES
@@ -440,72 +516,19 @@ def setup_database():
             ON CONFLICT (school_name) DO NOTHING;
         """)
 
-        # -------------------------------------------------
-        # REAL INVESTORS
-        # -------------------------------------------------
-
+        # ---- SEED INVESTORS ----
         cur.execute("""
             INSERT INTO investors (investor_name, active)
             VALUES
                 ('Gift', TRUE),
                 ('Ken', TRUE)
-            ON CONFLICT (investor_name)
-            DO UPDATE SET active = TRUE;
+            ON CONFLICT (investor_name) DO UPDATE SET active = TRUE;
         """)
 
-        # -------------------------------------------------
-        # INITIAL CAPITAL
-        # Only insert if investor has no capital contribution.
-        # -------------------------------------------------
+        # NOTE: Initial capital is no longer auto-inserted.
+        # Enter real contributions via Business Finance.
 
-        cur.execute("""
-            SELECT investor_id, investor_name
-            FROM investors
-            WHERE investor_name IN ('Gift', 'Ken');
-        """)
-
-        investors = cur.fetchall()
-
-        capital = {
-            "Gift": 150000,
-            "Ken": 100000
-        }
-
-        for investor_id, investor_name in investors:
-
-            cur.execute("""
-                SELECT COUNT(*)
-                FROM financial_transactions
-                WHERE investor_id = %s
-                  AND transaction_type = 'Capital Contribution';
-            """, (investor_id,))
-
-            count = cur.fetchone()[0]
-
-            if count == 0:
-                cur.execute("""
-                    INSERT INTO financial_transactions
-                    (
-                        transaction_type,
-                        category,
-                        description,
-                        amount,
-                        investor_id
-                    )
-                    VALUES
-                    (
-                        'Capital Contribution',
-                        'Owner Capital',
-                        'Initial capital contribution',
-                        %s,
-                        %s
-                    );
-                """, (capital[investor_name], investor_id))
-
-        # -------------------------------------------------
-        # PRODUCTS
-        # -------------------------------------------------
-
+        # ---- SEED PRODUCTS ----
         products = [
             ("Skirt", 650),
             ("Blouse", 500),
@@ -525,13 +548,11 @@ def setup_database():
         ]
 
         for name, price in products:
-
             cur.execute("""
                 INSERT INTO products
                 (product_name, price, cost_price)
                 VALUES (%s, %s, 0)
-                ON CONFLICT (product_name)
-                DO NOTHING;
+                ON CONFLICT (product_name) DO NOTHING;
             """, (name, price))
 
         conn.commit()
@@ -543,6 +564,15 @@ def setup_database():
 
     finally:
         conn.close()
+
+
+@st.cache_resource
+def _setup_once():
+    setup_database()
+    return True
+
+
+_setup_once()
 
 
 # =========================================================
@@ -560,18 +590,10 @@ if "page" not in st.session_state:
 
 
 # =========================================================
-# RUN DATABASE SETUP
-# =========================================================
-
-setup_database()
-
-
-# =========================================================
 # RECEIPT FUNCTIONS
 # =========================================================
 
 def get_receipt(sale_id):
-
     sale = fetch_dataframe("""
         SELECT
             s.sale_id,
@@ -586,10 +608,8 @@ def get_receipt(sale_id):
             c.customer_name,
             c.phone
         FROM sales s
-        LEFT JOIN schools sc
-            ON s.school_id = sc.school_id
-        LEFT JOIN customers c
-            ON s.customer_id = c.customer_id
+        LEFT JOIN schools sc ON s.school_id = sc.school_id
+        LEFT JOIN customers c ON s.customer_id = c.customer_id
         WHERE s.sale_id = %s
     """, (sale_id,))
 
@@ -604,230 +624,163 @@ def get_receipt(sale_id):
             si.line_total,
             si.issued
         FROM sale_items si
-        JOIN products p
-            ON si.product_id = p.product_id
+        JOIN products p ON si.product_id = p.product_id
         WHERE si.sale_id = %s
         ORDER BY si.sale_item_id
     """, (sale_id,))
 
-    return {
-        "header": sale.iloc[0].to_dict(),
-        "items": items
-    }
+    return {"header": sale.iloc[0].to_dict(), "items": items}
 
 
-def render_receipt(receipt):
-
-    if not receipt:
-        st.warning("Receipt not found.")
-        return
-
+def build_receipt_html(receipt):
     h = receipt["header"]
     items = receipt["items"]
 
     item_rows = ""
-
     for _, row in items.iterrows():
-
         item_rows += f"""
         <tr>
             <td>{row['product_name']}</td>
-            <td>{int(row['quantity'])}</td>
-            <td>KSh {float(row['unit_price']):,.2f}</td>
-            <td>KSh {float(row['line_total']):,.2f}</td>
+            <td style="text-align:center;">{int(row['quantity'])}</td>
+            <td style="text-align:right;">KSh {float(row['unit_price']):,.2f}</td>
+            <td style="text-align:right;">KSh {float(row['line_total']):,.2f}</td>
         </tr>
         """
 
     sale_date = h["sale_date"]
-
     if hasattr(sale_date, "strftime"):
         sale_date = sale_date.strftime("%d %b %Y, %I:%M %p")
 
-    html = f"""
+    return f"""
     <!DOCTYPE html>
     <html>
     <head>
-
+    <meta charset="utf-8">
     <style>
-
     body {{
-        font-family: Arial, sans-serif;
+        font-family: 'Courier New', Arial, sans-serif;
         background: #f3f4f6;
         padding: 20px;
+        margin: 0;
     }}
-
     .receipt {{
-        width: 600px;
+        width: 620px;
         max-width: 100%;
         margin: auto;
         background: white;
-        padding: 30px;
-        border-radius: 8px;
+        padding: 34px;
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.1);
     }}
-
     .header {{
         text-align: center;
-        border-bottom: 2px solid #111827;
-        padding-bottom: 15px;
-        margin-bottom: 15px;
+        border-bottom: 2px solid #0b1f3a;
+        padding-bottom: 16px;
+        margin-bottom: 18px;
     }}
-
-    .header h2 {{
-        margin: 0;
-        color: #0b1f3a;
-    }}
-
-    .details {{
-        margin-bottom: 20px;
-        line-height: 1.7;
-    }}
-
-    table {{
-        width: 100%;
-        border-collapse: collapse;
-    }}
-
+    .header h2 {{ margin: 0; color: #0b1f3a; letter-spacing: 1px; }}
+    .header p {{ margin: 6px 0; color: #555; }}
+    .header strong {{ letter-spacing: 3px; }}
+    .details {{ margin-bottom: 22px; line-height: 1.8; font-size: 14px; }}
+    table {{ width: 100%; border-collapse: collapse; }}
     th, td {{
-        border-bottom: 1px solid #ddd;
-        padding: 8px;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 9px 6px;
         text-align: left;
+        font-size: 14px;
     }}
-
-    th {{
-        background: #f3f4f6;
-    }}
-
+    th {{ background: #f3f4f6; font-size: 13px; letter-spacing: 1px; }}
     .total {{
         text-align: right;
-        font-size: 20px;
+        font-size: 22px;
         font-weight: bold;
-        margin-top: 20px;
+        margin-top: 22px;
+        padding-top: 14px;
+        border-top: 2px solid #0b1f3a;
+        color: #0b1f3a;
     }}
-
-    .footer {{
-        text-align: center;
-        margin-top: 25px;
-        color: #555;
-    }}
-
+    .footer {{ text-align: center; margin-top: 26px; color: #666; font-size: 13px; }}
     .print-button {{
         display: block;
-        margin: 20px auto;
-        padding: 12px 25px;
-        background: #0b1f3a;
+        margin: 22px auto 0 auto;
+        padding: 12px 32px;
+        background: #f28c28;
         color: white;
         border: none;
-        border-radius: 6px;
+        border-radius: 8px;
         cursor: pointer;
         font-size: 15px;
+        font-weight: bold;
     }}
-
+    .print-button:hover {{ background: #d97706; }}
     @media print {{
-
-        body {{
-            background: white;
-            padding: 0;
-        }}
-
-        .receipt {{
-            width: 100%;
-            padding: 10px;
-        }}
-
-        .print-button {{
-            display: none;
-        }}
-
+        body {{ background: white; padding: 0; }}
+        .receipt {{ width: 100%; box-shadow: none; padding: 10px; }}
+        .print-button {{ display: none; }}
     }}
-
     </style>
-
     </head>
-
     <body>
-
     <div class="receipt">
-
         <div class="header">
-
             <h2>UNIFORM BUSINESS</h2>
-
             <p>{h.get('school_name') or ''}</p>
-
             <strong>SALES RECEIPT</strong>
-
         </div>
-
         <div class="details">
-
             <strong>Receipt No:</strong> {h.get('sale_id')}<br>
-
             <strong>Date:</strong> {sale_date}<br>
-
-            <strong>Customer/Student:</strong>
-            {h.get('customer_name') or ''}<br>
-
-            <strong>Phone:</strong>
-            {h.get('phone') or ''}<br>
-
-            <strong>Class/Grade:</strong>
-            {h.get('class_name') or ''}<br>
-
-            <strong>Term:</strong>
-            {h.get('term') or ''}<br>
-
-            <strong>Year:</strong>
-            {h.get('year') or ''}<br>
-
-            <strong>Payment:</strong>
-            {h.get('payment_method') or ''}
-
+            <strong>Customer/Student:</strong> {h.get('customer_name') or ''}<br>
+            <strong>Phone:</strong> {h.get('phone') or ''}<br>
+            <strong>Class/Grade:</strong> {h.get('class_name') or ''}<br>
+            <strong>Term:</strong> {h.get('term') or ''}<br>
+            <strong>Year:</strong> {h.get('year') or ''}<br>
+            <strong>Payment:</strong> {h.get('payment_method') or ''}
         </div>
-
         <table>
-
             <thead>
-
                 <tr>
                     <th>Item</th>
-                    <th>Qty</th>
-                    <th>Price</th>
-                    <th>Total</th>
+                    <th style="text-align:center;">Qty</th>
+                    <th style="text-align:right;">Price</th>
+                    <th style="text-align:right;">Total</th>
                 </tr>
-
             </thead>
-
-            <tbody>
-
-                {item_rows}
-
-            </tbody>
-
+            <tbody>{item_rows}</tbody>
         </table>
-
-        <div class="total">
-            TOTAL: KSh {float(h.get('total_amount') or 0):,.2f}
-        </div>
-
-        <div class="footer">
-            Thank you for your business.
-        </div>
-
-        <button class="print-button" onclick="window.print()">
-            🖨️ Print Receipt
-        </button>
-
+        <div class="total">TOTAL: KSh {float(h.get('total_amount') or 0):,.2f}</div>
+        <div class="footer">Thank you for your business.</div>
+        <button class="print-button" onclick="window.print()">🖨️ Print Receipt</button>
     </div>
-
     </body>
     </html>
     """
 
-    components.html(
-        html,
-        height=700,
-        scrolling=True
-    )
+
+def render_receipt(receipt):
+    if not receipt:
+        st.warning("Receipt not found.")
+        return
+
+    html = build_receipt_html(receipt)
+
+    components.html(html, height=760, scrolling=True)
+
+    # Backup print button at top level (in case iframe print is blocked)
+    b64 = base64.b64encode(html.encode("utf-8")).decode("ascii")
+
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("🖨️ Open Print View", key=f"print_{receipt['header']['sale_id']}"):
+            components.html(f"""
+                <script>
+                const w = window.open("", "_blank");
+                w.document.write(atob("{b64}"));
+                w.document.close();
+                w.focus();
+                setTimeout(() => w.print(), 400);
+                </script>
+            """, height=0)
 
 
 # =========================================================
@@ -839,40 +792,31 @@ with st.sidebar:
     st.markdown("""
     <div style="
         text-align:center;
-        padding:10px 0 20px 0;
+        padding:14px 0 20px 0;
         font-size:20px;
         font-weight:800;
+        letter-spacing:1px;
     ">
         🏫 UNIFORM BUSINESS
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("### 🏠 MAIN")
+    pages = [
+        "Dashboard",
+        "New Sale",
+        "Sales History",
+        "Stock Management",
+        "Price Management",
+        "Tailor & Production",
+        "Business Finance",
+        "ML & Forecasting",
+        "System Management"
+    ]
 
     page = st.radio(
         "Navigation",
-        [
-            "Dashboard",
-            "New Sale",
-            "Sales History",
-            "Stock Management",
-            "Price Management",
-            "Tailor & Production",
-            "Business Finance",
-            "ML & Forecasting",
-            "System Management"
-        ],
-        index=[
-            "Dashboard",
-            "New Sale",
-            "Sales History",
-            "Stock Management",
-            "Price Management",
-            "Tailor & Production",
-            "Business Finance",
-            "ML & Forecasting",
-            "System Management"
-        ].index(st.session_state.page),
+        pages,
+        index=pages.index(st.session_state.page),
         label_visibility="collapsed",
         key="navigation"
     )
@@ -880,7 +824,6 @@ with st.sidebar:
     st.session_state.page = page
 
     st.markdown("---")
-
     st.caption("Uniform Business Management System")
     st.caption("PostgreSQL + Python + Streamlit")
 
@@ -891,13 +834,8 @@ with st.sidebar:
 
 st.markdown("""
 <div class="app-header">
-
     <h1>🏫 UNIFORM BUSINESS MANAGEMENT SYSTEM</h1>
-
-    <p>
-        Sales • Inventory • Production • Finance • Reports
-    </p>
-
+    <p>Sales • Inventory • Production • Finance • Reports</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -908,238 +846,166 @@ st.markdown("""
 
 if page == "Dashboard":
 
-    st.markdown(
-        '<div class="main-title">Dashboard</div>',
-        unsafe_allow_html=True
-    )
-
-    st.markdown(
-        '<div class="subtitle">Business overview and daily performance</div>',
-        unsafe_allow_html=True
-    )
-
-    # -----------------------------------------------------
-    # KPIs
-    # -----------------------------------------------------
+    st.markdown('<div class="main-title">Dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Business overview and daily performance</div>',
+                unsafe_allow_html=True)
 
     today_sales = fetch_dataframe("""
         SELECT COALESCE(SUM(total_amount),0) AS value
-        FROM sales
-        WHERE DATE(sale_date) = CURRENT_DATE
+        FROM sales WHERE DATE(sale_date) = CURRENT_DATE
     """)
 
     month_sales = fetch_dataframe("""
         SELECT COALESCE(SUM(total_amount),0) AS value
-        FROM sales
-        WHERE sale_date >= DATE_TRUNC('month', CURRENT_DATE)
+        FROM sales WHERE sale_date >= DATE_TRUNC('month', CURRENT_DATE)
     """)
 
     transactions = fetch_dataframe("""
         SELECT COUNT(*) AS value
-        FROM sales
-        WHERE DATE(sale_date) = CURRENT_DATE
+        FROM sales WHERE DATE(sale_date) = CURRENT_DATE
     """)
 
     items = fetch_dataframe("""
         SELECT COALESCE(SUM(si.quantity),0) AS value
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.sale_id
-        WHERE DATE(s.sale_date) = CURRENT_DATE
-          AND si.issued = TRUE
+        WHERE DATE(s.sale_date) = CURRENT_DATE AND si.issued = TRUE
     """)
 
     c1, c2, c3, c4 = st.columns(4)
 
     with c1:
-        value = today_sales.iloc[0]["value"]
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-title">TODAY'S SALES</div>
-            <div class="metric-value">{money(value)}</div>
+            <div class="metric-title">Today's Sales</div>
+            <div class="metric-value">{money(today_sales.iloc[0]['value'])}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with c2:
-        value = month_sales.iloc[0]["value"]
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">THIS MONTH</div>
-            <div class="metric-value">{money(value)}</div>
+        <div class="metric-card green">
+            <div class="metric-title">This Month</div>
+            <div class="metric-value">{money(month_sales.iloc[0]['value'])}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with c3:
-        value = transactions.iloc[0]["value"]
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">TODAY'S TRANSACTIONS</div>
-            <div class="metric-value">{int(value)}</div>
+        <div class="metric-card blue">
+            <div class="metric-title">Today's Transactions</div>
+            <div class="metric-value">{int(transactions.iloc[0]['value'])}</div>
         </div>
         """, unsafe_allow_html=True)
 
     with c4:
-        value = items.iloc[0]["value"]
         st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">ITEMS SOLD TODAY</div>
-            <div class="metric-value">{int(value)}</div>
+        <div class="metric-card purple">
+            <div class="metric-title">Items Sold Today</div>
+            <div class="metric-value">{int(items.iloc[0]['value'])}</div>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("")
 
-    # -----------------------------------------------------
-    # QUICK ACTIONS
-    # -----------------------------------------------------
-
     st.markdown("### ⚡ Quick Actions")
 
     q1, q2, q3, q4 = st.columns(4)
-
     with q1:
         if st.button("➕ New Sale", use_container_width=True):
-            st.session_state.page = "New Sale"
-            st.rerun()
-
+            st.session_state.page = "New Sale"; st.rerun()
     with q2:
         if st.button("📦 Add Stock", use_container_width=True):
-            st.session_state.page = "Stock Management"
-            st.rerun()
-
+            st.session_state.page = "Stock Management"; st.rerun()
     with q3:
         if st.button("💰 Manage Prices", use_container_width=True):
-            st.session_state.page = "Price Management"
-            st.rerun()
-
+            st.session_state.page = "Price Management"; st.rerun()
     with q4:
         if st.button("📜 Sales History", use_container_width=True):
-            st.session_state.page = "Sales History"
-            st.rerun()
+            st.session_state.page = "Sales History"; st.rerun()
 
     st.markdown("---")
-
-    # -----------------------------------------------------
-    # SALES TREND
-    # -----------------------------------------------------
 
     left, right = st.columns(2)
 
     with left:
-
-        st.markdown("### 📈 Sales Trend")
-
+        st.markdown("### 📈 Sales Trend (Last 30 Days)")
         trend = fetch_dataframe("""
-            SELECT
-                DATE(sale_date) AS sale_day,
-                SUM(total_amount) AS revenue
+            SELECT DATE(sale_date) AS sale_day, SUM(total_amount) AS revenue
             FROM sales
             WHERE sale_date >= CURRENT_DATE - INTERVAL '30 days'
             GROUP BY DATE(sale_date)
             ORDER BY sale_day;
         """)
-
         if not trend.empty:
             trend["sale_day"] = pd.to_datetime(trend["sale_day"])
-            trend = trend.set_index("sale_day")
-            st.line_chart(trend["revenue"])
+            st.line_chart(trend.set_index("sale_day")["revenue"])
         else:
             st.info("No sales recorded yet.")
 
-    # -----------------------------------------------------
-    # SALES BY SCHOOL
-    # -----------------------------------------------------
-
     with right:
-
         st.markdown("### 🏫 Sales by School")
-
         school_sales = fetch_dataframe("""
-            SELECT
-                sc.school_name,
-                COALESCE(SUM(s.total_amount),0) AS revenue
+            SELECT sc.school_name, COALESCE(SUM(s.total_amount),0) AS revenue
             FROM schools sc
-            LEFT JOIN sales s
-                ON sc.school_id = s.school_id
+            LEFT JOIN sales s ON sc.school_id = s.school_id
             GROUP BY sc.school_name
             ORDER BY revenue DESC;
         """)
-
         if not school_sales.empty:
-
-            chart = school_sales.set_index("school_name")
-
-            st.bar_chart(chart["revenue"])
-
+            st.bar_chart(school_sales.set_index("school_name")["revenue"])
         else:
             st.info("No sales recorded yet.")
 
     st.markdown("---")
 
-    # -----------------------------------------------------
-    # STOCK + TOP PRODUCTS
-    # -----------------------------------------------------
-
     left, right = st.columns(2)
 
     with left:
-
         st.markdown("### 📦 Stock Status")
 
         stock_df = fetch_dataframe("""
+            WITH brought AS (
+                SELECT school_id, product_id,
+                       SUM(quantity_brought) AS qty
+                FROM stock
+                GROUP BY school_id, product_id
+            ),
+            sold AS (
+                SELECT s.school_id, si.product_id,
+                       SUM(si.quantity) AS qty
+                FROM sale_items si
+                JOIN sales s ON si.sale_id = s.sale_id
+                WHERE si.issued = TRUE
+                GROUP BY s.school_id, si.product_id
+            )
             SELECT
                 sc.school_name,
                 p.product_name,
-                COALESCE(SUM(st.quantity_brought),0)
-                -
-                COALESCE((
-                    SELECT SUM(si.quantity)
-                    FROM sale_items si
-                    JOIN sales s
-                        ON si.sale_id = s.sale_id
-                    WHERE s.school_id = st.school_id
-                      AND si.product_id = st.product_id
-                      AND si.issued = TRUE
-                ),0) AS remaining
-            FROM stock st
-            JOIN schools sc
-                ON st.school_id = sc.school_id
-            JOIN products p
-                ON st.product_id = p.product_id
-            GROUP BY
-                sc.school_name,
-                p.product_name,
-                st.school_id,
-                st.product_id
-            ORDER BY remaining ASC;
+                COALESCE(b.qty,0) - COALESCE(sl.qty,0) AS remaining
+            FROM schools sc
+            JOIN products p ON TRUE
+            LEFT JOIN brought b
+                ON b.school_id = sc.school_id
+               AND b.product_id = p.product_id
+            LEFT JOIN sold sl
+                ON sl.school_id = sc.school_id
+               AND sl.product_id = p.product_id
+            WHERE COALESCE(b.qty,0) > 0
+            ORDER BY remaining ASC
+            LIMIT 20;
         """)
 
         if stock_df.empty:
-
             st.info("No stock records yet.")
-
         else:
-
-            display_stock = stock_df.copy()
-
-            display_stock["Status"] = display_stock["remaining"].apply(
+            stock_df["Status"] = stock_df["remaining"].apply(
                 lambda x: "LOW" if x <= 5 else "OK"
             )
-
-            display_stock.columns = [
-                "School",
-                "Product",
-                "Remaining",
-                "Status"
-            ]
-
-            st.dataframe(
-                display_stock,
-                use_container_width=True,
-                hide_index=True
-            )
+            stock_df.columns = ["School", "Product", "Remaining", "Status"]
+            st.dataframe(stock_df, use_container_width=True, hide_index=True)
 
     with right:
-
         st.markdown("### 🏆 Top-Selling Products")
 
         top_products = fetch_dataframe("""
@@ -1148,10 +1014,8 @@ if page == "Dashboard":
                 SUM(si.quantity) AS quantity_sold,
                 SUM(si.line_total) AS revenue
             FROM sale_items si
-            JOIN products p
-                ON si.product_id = p.product_id
-            JOIN sales s
-                ON si.sale_id = s.sale_id
+            JOIN products p ON si.product_id = p.product_id
+            JOIN sales s ON si.sale_id = s.sale_id
             WHERE si.issued = TRUE
             GROUP BY p.product_name
             ORDER BY quantity_sold DESC
@@ -1164,12 +1028,13 @@ if page == "Dashboard":
             st.dataframe(
                 top_products,
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
+                column_config={
+                    "revenue": st.column_config.NumberColumn(
+                        "Revenue", format="KSh %.2f"
+                    ),
+                }
             )
-
-    # -----------------------------------------------------
-    # RECENT SALES
-    # -----------------------------------------------------
 
     st.markdown("### 🧾 Recent Sales")
 
@@ -1183,10 +1048,8 @@ if page == "Dashboard":
             s.total_amount AS "Amount",
             s.payment_method AS "Payment"
         FROM sales s
-        LEFT JOIN schools sc
-            ON s.school_id = sc.school_id
-        LEFT JOIN customers c
-            ON s.customer_id = c.customer_id
+        LEFT JOIN schools sc ON s.school_id = sc.school_id
+        LEFT JOIN customers c ON s.customer_id = c.customer_id
         ORDER BY s.sale_date DESC
         LIMIT 10;
     """)
@@ -1197,7 +1060,12 @@ if page == "Dashboard":
         st.dataframe(
             recent,
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
+            column_config={
+                "Amount": st.column_config.NumberColumn(
+                    "Amount", format="KSh %.2f"
+                ),
+            }
         )
 
 
@@ -1208,131 +1076,68 @@ if page == "Dashboard":
 elif page == "New Sale":
 
     st.markdown("## 🧾 New Sale")
-    st.markdown(
-        "Create a sale, add items to the cart and issue a receipt."
-    )
+    st.markdown("Create a sale, add items to the cart and issue a receipt.")
 
     schools = fetch_dataframe("""
-        SELECT school_id, school_name
-        FROM schools
-        ORDER BY school_name
+        SELECT school_id, school_name FROM schools ORDER BY school_name
     """)
 
     if schools.empty:
         st.warning("No schools found.")
         st.stop()
 
-    school_name = st.selectbox(
-        "School",
-        schools["school_name"].tolist()
-    )
-
-    school_id = int(
-        schools.loc[
-            schools["school_name"] == school_name,
-            "school_id"
-        ].iloc[0]
-    )
+    school_name = st.selectbox("School", schools["school_name"].tolist())
+    school_id = int(schools.loc[
+        schools["school_name"] == school_name, "school_id"
+    ].iloc[0])
 
     c1, c2, c3 = st.columns(3)
-
     with c1:
-        term = st.selectbox(
-            "Term",
-            ["Term 1", "Term 2", "Term 3"]
-        )
-
+        term = st.selectbox("Term", ["Term 1", "Term 2", "Term 3"])
     with c2:
-        year = st.number_input(
-            "Year",
-            min_value=2020,
-            max_value=2100,
-            value=datetime.now().year
-        )
-
+        year = st.number_input("Year", min_value=2020, max_value=2100,
+                               value=datetime.now().year)
     with c3:
-        category = st.selectbox(
-            "Category",
-            ["Primary", "Junior Secondary"]
-        )
+        category = st.selectbox("Category", ["Primary", "Junior Secondary"])
 
     c1, c2 = st.columns(2)
-
     with c1:
-        customer_name = st.text_input(
-            "Student / Customer Name"
-        )
-
+        customer_name = st.text_input("Student / Customer Name")
     with c2:
-        phone = st.text_input(
-            "Phone Number"
-        )
+        phone = st.text_input("Phone Number")
 
-    class_name = st.text_input(
-        "Class / Grade"
-    )
+    class_name = st.text_input("Class / Grade")
 
     st.markdown("---")
-
     st.markdown("### 🛒 Add Items")
 
     available = fetch_dataframe("""
-        SELECT
-            spp.product_id,
-            p.product_name,
-            spp.price
+        SELECT spp.product_id, p.product_name, spp.price
         FROM school_product_prices spp
-        JOIN products p
-            ON spp.product_id = p.product_id
-        WHERE spp.school_id = %s
-          AND spp.category_name = %s
+        JOIN products p ON spp.product_id = p.product_id
+        WHERE spp.school_id = %s AND spp.category_name = %s
         ORDER BY p.product_name;
     """, (school_id, category))
 
     if available.empty:
-
         st.warning(
             "No prices have been assigned to this school/category. "
             "Go to Price Management first."
         )
-
     else:
-
-        product_name = st.selectbox(
-            "Product",
-            available["product_name"].tolist()
-        )
-
-        selected = available[
-            available["product_name"] == product_name
-        ].iloc[0]
-
+        product_name = st.selectbox("Product", available["product_name"].tolist())
+        selected = available[available["product_name"] == product_name].iloc[0]
         unit_price = float(selected["price"])
 
         st.info(f"Unit price: {money(unit_price)}")
 
         c1, c2 = st.columns(2)
-
         with c1:
-            quantity = st.number_input(
-                "Quantity",
-                min_value=1,
-                value=1,
-                step=1
-            )
-
+            quantity = st.number_input("Quantity", min_value=1, value=1, step=1)
         with c2:
-            issued = st.checkbox(
-                "Issued to customer",
-                value=True
-            )
+            issued = st.checkbox("Issued to customer", value=True)
 
-        if st.button(
-            "➕ Add to Cart",
-            type="primary",
-            use_container_width=True
-        ):
-
+        if st.button("➕ Add to Cart", type="primary", use_container_width=True):
             st.session_state.cart.append({
                 "product_id": int(selected["product_id"]),
                 "product": product_name,
@@ -1341,214 +1146,113 @@ elif page == "New Sale":
                 "line_total": unit_price * quantity,
                 "issued": issued
             })
-
             st.success("Item added to cart.")
-
-    # -----------------------------------------------------
-    # CART
-    # -----------------------------------------------------
 
     st.markdown("### 🛒 Cart")
 
     if st.session_state.cart:
-
         cart_df = pd.DataFrame(st.session_state.cart)
-
         st.dataframe(
-            cart_df[
-                [
-                    "product",
-                    "quantity",
-                    "unit_price",
-                    "line_total",
-                    "issued"
-                ]
-            ],
+            cart_df[["product", "quantity", "unit_price", "line_total", "issued"]],
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
+            column_config={
+                "unit_price": st.column_config.NumberColumn(
+                    "Unit Price", format="KSh %.2f"
+                ),
+                "line_total": st.column_config.NumberColumn(
+                    "Line Total", format="KSh %.2f"
+                ),
+            }
         )
 
-        total = sum(
-            item["line_total"]
-            for item in st.session_state.cart
-        )
-
-        st.markdown(
-            f"## Total: {money(total)}"
-        )
+        total = sum(i["line_total"] for i in st.session_state.cart)
+        st.markdown(f"## Total: {money(total)}")
 
         c1, c2 = st.columns(2)
-
         with c1:
-
-            if st.button(
-                "🗑️ Clear Cart",
-                use_container_width=True
-            ):
+            if st.button("🗑️ Clear Cart", use_container_width=True):
                 st.session_state.cart = []
                 st.rerun()
-
         with c2:
-
             payment_method = st.selectbox(
-                "Payment Method",
-                ["Cash", "M-Pesa", "Bank", "Other"]
+                "Payment Method", ["Cash", "M-Pesa", "Bank", "Other"]
             )
 
-            if st.button(
-                "✅ Complete Sale",
-                type="primary",
-                use_container_width=True
-            ):
-
+            if st.button("✅ Complete Sale", type="primary",
+                         use_container_width=True):
                 if not customer_name.strip():
                     st.error("Enter the student/customer name.")
-
                 else:
-
                     conn = get_connection()
-
                     try:
-
                         cur = conn.cursor()
 
-                        # CUSTOMER
                         cur.execute("""
-                            INSERT INTO customers
-                            (customer_name, phone)
-                            VALUES (%s, %s)
-                            RETURNING customer_id;
-                        """, (
-                            customer_name.strip(),
-                            phone.strip()
-                        ))
-
+                            INSERT INTO customers (customer_name, phone)
+                            VALUES (%s, %s) RETURNING customer_id;
+                        """, (customer_name.strip(), phone.strip()))
                         customer_id = cur.fetchone()[0]
 
-                        # SALE
                         cur.execute("""
                             INSERT INTO sales
-                            (
-                                school_id,
-                                customer_id,
-                                class_name,
-                                total_amount,
-                                payment_method,
-                                payment_status,
-                                term,
-                                year
-                            )
-                            VALUES
-                            (%s,%s,%s,%s,%s,'Paid',%s,%s)
+                            (school_id, customer_id, class_name,
+                             total_amount, payment_method, payment_status,
+                             term, year)
+                            VALUES (%s,%s,%s,%s,%s,'Paid',%s,%s)
                             RETURNING sale_id;
-                        """, (
-                            school_id,
-                            customer_id,
-                            class_name.strip(),
-                            total,
-                            payment_method,
-                            term,
-                            year
-                        ))
-
+                        """, (school_id, customer_id, class_name.strip(),
+                              total, payment_method, term, year))
                         sale_id = cur.fetchone()[0]
 
-                        # SALE ITEMS
                         for item in st.session_state.cart:
-
                             cur.execute("""
                                 INSERT INTO sale_items
-                                (
-                                    sale_id,
-                                    product_id,
-                                    quantity,
-                                    unit_price,
-                                    line_total,
-                                    issued
-                                )
-                                VALUES
-                                (%s,%s,%s,%s,%s,%s);
-                            """, (
-                                sale_id,
-                                item["product_id"],
-                                item["quantity"],
-                                item["unit_price"],
-                                item["line_total"],
-                                item["issued"]
-                            ))
+                                (sale_id, product_id, quantity,
+                                 unit_price, line_total, issued)
+                                VALUES (%s,%s,%s,%s,%s,%s);
+                            """, (sale_id, item["product_id"],
+                                  item["quantity"], item["unit_price"],
+                                  item["line_total"], item["issued"]))
 
-                        # FINANCE
                         cur.execute("""
                             INSERT INTO financial_transactions
-                            (
-                                transaction_type,
-                                category,
-                                description,
-                                amount,
-                                term,
-                                year,
-                                sale_id
-                            )
-                            VALUES
-                            (
-                                'Sales Income',
-                                'Sales',
-                                %s,
-                                %s,
-                                %s,
-                                %s,
-                                %s
-                            );
-                        """, (
-                            f"Sale #{sale_id}",
-                            total,
-                            term,
-                            year,
-                            sale_id
-                        ))
+                            (transaction_type, category, description,
+                             amount, term, year, sale_id)
+                            VALUES ('Sales Income', 'Sales', %s,
+                                    %s, %s, %s, %s);
+                        """, (f"Sale #{sale_id}", total, term, year, sale_id))
 
                         conn.commit()
-
                         cur.close()
                         conn.close()
+
+                        log_action("CREATE", "sale", sale_id,
+                                   f"Total {money(total)}")
 
                         st.session_state.last_receipt = sale_id
                         st.session_state.cart = []
 
-                        st.success(
-                            f"Sale #{sale_id} completed successfully."
-                        )
+                        st.success(f"Sale #{sale_id} completed successfully.")
+                        st.rerun()
 
                     except Exception as e:
-
                         conn.rollback()
                         conn.close()
-
-                        st.error(
-                            f"Sale could not be completed: {e}"
-                        )
+                        st.error(f"Sale could not be completed: {e}")
 
     else:
-
         st.info("Your cart is empty.")
 
 
 # =========================================================
-# DISPLAY LAST RECEIPT
+# SHOW LAST RECEIPT (after completing a sale)
 # =========================================================
 
 if page == "New Sale" and st.session_state.last_receipt:
-
     st.markdown("---")
-
     st.markdown("## 🧾 Receipt")
-
-    receipt = get_receipt(
-        st.session_state.last_receipt
-    )
-
-    render_receipt(receipt)
-
+    render_receipt(get_receipt(st.session_state.last_receipt))
     if st.button("Close Receipt"):
         st.session_state.last_receipt = None
         st.rerun()
@@ -1564,35 +1268,27 @@ elif page == "Sales History":
 
     sales = fetch_dataframe("""
         SELECT
-            s.sale_id,
-            s.sale_date,
-            sc.school_name,
-            c.customer_name,
-            c.phone,
-            s.class_name,
-            s.term,
-            s.year,
-            s.total_amount,
-            s.payment_method,
-            s.payment_status
+            s.sale_id, s.sale_date, sc.school_name, c.customer_name,
+            c.phone, s.class_name, s.term, s.year,
+            s.total_amount, s.payment_method, s.payment_status
         FROM sales s
-        LEFT JOIN schools sc
-            ON s.school_id = sc.school_id
-        LEFT JOIN customers c
-            ON s.customer_id = c.customer_id
+        LEFT JOIN schools sc ON s.school_id = sc.school_id
+        LEFT JOIN customers c ON s.customer_id = c.customer_id
         ORDER BY s.sale_date DESC;
     """)
 
     if sales.empty:
-
         st.info("No sales have been recorded yet.")
-
     else:
-
         st.dataframe(
             sales,
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
+            column_config={
+                "total_amount": st.column_config.NumberColumn(
+                    "Amount", format="KSh %.2f"
+                ),
+            }
         )
 
         st.download_button(
@@ -1603,20 +1299,13 @@ elif page == "Sales History":
         )
 
         st.markdown("---")
-
         sale_id = st.number_input(
             "Receipt number to view / print",
-            min_value=1,
-            step=1
+            min_value=1, step=1
         )
 
-        if st.button(
-            "🧾 View / Print Receipt",
-            type="primary"
-        ):
-
+        if st.button("🧾 View / Print Receipt", type="primary"):
             receipt = get_receipt(int(sale_id))
-
             if receipt:
                 render_receipt(receipt)
             else:
@@ -1632,58 +1321,34 @@ elif page == "Price Management":
     st.markdown("## 💰 Price Management")
 
     schools = fetch_dataframe("""
-        SELECT school_id, school_name
-        FROM schools
-        ORDER BY school_name
+        SELECT school_id, school_name FROM schools ORDER BY school_name
     """)
 
-    school_name = st.selectbox(
-        "School",
-        schools["school_name"].tolist()
-    )
+    school_name = st.selectbox("School", schools["school_name"].tolist())
+    school_id = int(schools.loc[
+        schools["school_name"] == school_name, "school_id"
+    ].iloc[0])
 
-    school_id = int(
-        schools.loc[
-            schools["school_name"] == school_name,
-            "school_id"
-        ].iloc[0]
-    )
-
-    category = st.selectbox(
-        "Category",
-        ["Primary", "Junior Secondary"]
-    )
+    category = st.selectbox("Category", ["Primary", "Junior Secondary"])
 
     st.markdown("### Existing Prices")
 
     prices = fetch_dataframe("""
-        SELECT
-            spp.school_product_price_id,
-            p.product_name,
-            spp.price
+        SELECT spp.school_product_price_id, p.product_name, spp.price
         FROM school_product_prices spp
-        JOIN products p
-            ON spp.product_id = p.product_id
-        WHERE spp.school_id = %s
-          AND spp.category_name = %s
+        JOIN products p ON spp.product_id = p.product_id
+        WHERE spp.school_id = %s AND spp.category_name = %s
         ORDER BY p.product_name;
     """, (school_id, category))
 
     if prices.empty:
-
         st.info("No prices assigned yet.")
-
     else:
-
         for _, row in prices.iterrows():
-
             c1, c2, c3 = st.columns([4, 2, 1])
-
             with c1:
                 st.write(row["product_name"])
-
             with c2:
-
                 new_price = st.number_input(
                     f"Price {row['school_product_price_id']}",
                     min_value=0.0,
@@ -1692,154 +1357,81 @@ elif page == "Price Management":
                     key=f"price_{row['school_product_price_id']}",
                     label_visibility="collapsed"
                 )
-
             with c3:
-
-                if st.button(
-                    "Save",
-                    key=f"save_price_{row['school_product_price_id']}"
-                ):
-
-                    execute_query("""
+                if st.button("Save",
+                             key=f"save_price_{row['school_product_price_id']}"):
+                    ok, _ = safe_execute("""
                         UPDATE school_product_prices
                         SET price = %s
                         WHERE school_product_price_id = %s
-                    """, (
-                        new_price,
-                        row["school_product_price_id"]
-                    ))
-
-                    st.success("Price updated.")
-                    st.rerun()
+                    """, (new_price, row["school_product_price_id"]),
+                        error_message="Could not update price.")
+                    if ok:
+                        st.success("Price updated.")
+                        st.rerun()
 
     st.markdown("---")
-
     st.markdown("### ➕ Assign Product")
 
     products = fetch_dataframe("""
         SELECT product_id, product_name, price
-        FROM products
-        ORDER BY product_name
+        FROM products ORDER BY product_name
     """)
 
     assigned = fetch_dataframe("""
-        SELECT product_id
-        FROM school_product_prices
-        WHERE school_id = %s
-          AND category_name = %s
+        SELECT product_id FROM school_product_prices
+        WHERE school_id = %s AND category_name = %s
     """, (school_id, category))
 
-    assigned_ids = set(
-        assigned["product_id"].tolist()
-    ) if not assigned.empty else set()
-
-    unassigned = products[
-        ~products["product_id"].isin(assigned_ids)
-    ]
+    assigned_ids = set(assigned["product_id"].tolist()) if not assigned.empty else set()
+    unassigned = products[~products["product_id"].isin(assigned_ids)]
 
     if unassigned.empty:
-
-        st.success(
-            "All products have been assigned."
-        )
-
+        st.success("All products have been assigned.")
     else:
-
         product_name = st.selectbox(
-            "Product to assign",
-            unassigned["product_name"].tolist()
+            "Product to assign", unassigned["product_name"].tolist()
         )
-
-        product = unassigned[
-            unassigned["product_name"] == product_name
-        ].iloc[0]
-
+        product = unassigned[unassigned["product_name"] == product_name].iloc[0]
         price = st.number_input(
-            "Selling Price",
-            min_value=0.0,
-            value=float(product["price"]),
-            step=50.0
+            "Selling Price", min_value=0.0,
+            value=float(product["price"]), step=50.0
         )
 
-        if st.button(
-            "Assign Product",
-            type="primary"
-        ):
-
-            execute_query("""
+        if st.button("Assign Product", type="primary"):
+            ok, _ = safe_execute("""
                 INSERT INTO school_product_prices
-                (
-                    school_id,
-                    category_name,
-                    product_id,
-                    price
-                )
+                (school_id, category_name, product_id, price)
                 VALUES (%s,%s,%s,%s)
-            """, (
-                school_id,
-                category,
-                int(product["product_id"]),
-                price
-            ))
-
-            st.success("Product assigned.")
-            st.rerun()
+            """, (school_id, category, int(product["product_id"]), price),
+                error_message="Could not assign product.")
+            if ok:
+                st.success("Product assigned.")
+                st.rerun()
 
     st.markdown("---")
-
     st.markdown("### ➕ Create New Product")
 
     c1, c2 = st.columns(2)
-
     with c1:
-        new_product = st.text_input(
-            "Product Name"
-        )
-
+        new_product = st.text_input("Product Name")
     with c2:
-        selling_price = st.number_input(
-            "Selling Price",
-            min_value=0.0,
-            step=50.0
-        )
+        selling_price = st.number_input("Selling Price", min_value=0.0, step=50.0)
 
-    cost_price = st.number_input(
-        "Cost Price",
-        min_value=0.0,
-        step=50.0
-    )
+    cost_price = st.number_input("Cost Price", min_value=0.0, step=50.0)
 
-    if st.button(
-        "Create Product",
-        type="primary"
-    ):
-
+    if st.button("Create Product", type="primary"):
         if not new_product.strip():
-
             st.error("Enter product name.")
-
         else:
-
-            try:
-
-                execute_query("""
-                    INSERT INTO products
-                    (
-                        product_name,
-                        price,
-                        cost_price
-                    )
-                    VALUES (%s,%s,%s)
-                """, (
-                    new_product.strip(),
-                    selling_price,
-                    cost_price
-                ))
-
+            ok, _ = safe_execute("""
+                INSERT INTO products (product_name, price, cost_price)
+                VALUES (%s,%s,%s)
+            """, (new_product.strip(), selling_price, cost_price),
+                error_message="Could not create product.")
+            if ok:
                 st.success("Product created.")
-
-            except Exception as e:
-                st.error(f"Could not create product: {e}")
+                st.rerun()
 
 
 # =========================================================
@@ -1851,224 +1443,123 @@ elif page == "Stock Management":
     st.markdown("## 📦 Stock Management")
 
     schools = fetch_dataframe("""
-        SELECT school_id, school_name
-        FROM schools
-        ORDER BY school_name
+        SELECT school_id, school_name FROM schools ORDER BY school_name
     """)
-
     products = fetch_dataframe("""
-        SELECT product_id, product_name
-        FROM products
-        ORDER BY product_name
+        SELECT product_id, product_name FROM products ORDER BY product_name
     """)
 
     c1, c2 = st.columns(2)
-
     with c1:
-
-        school_name = st.selectbox(
-            "School",
-            schools["school_name"].tolist()
-        )
-
-        school_id = int(
-            schools.loc[
-                schools["school_name"] == school_name,
-                "school_id"
-            ].iloc[0]
-        )
-
+        school_name = st.selectbox("School", schools["school_name"].tolist())
+        school_id = int(schools.loc[
+            schools["school_name"] == school_name, "school_id"
+        ].iloc[0])
     with c2:
-
-        product_name = st.selectbox(
-            "Product",
-            products["product_name"].tolist()
-        )
-
-        product_id = int(
-            products.loc[
-                products["product_name"] == product_name,
-                "product_id"
-            ].iloc[0]
-        )
+        product_name = st.selectbox("Product", products["product_name"].tolist())
+        product_id = int(products.loc[
+            products["product_name"] == product_name, "product_id"
+        ].iloc[0])
 
     c1, c2, c3, c4 = st.columns(4)
-
     with c1:
-        quantity = st.number_input(
-            "Quantity",
-            min_value=1,
-            step=1
-        )
-
+        quantity = st.number_input("Quantity", min_value=1, step=1)
     with c2:
-        unit_cost = st.number_input(
-            "Unit Cost",
-            min_value=0.0,
-            step=50.0
-        )
-
+        unit_cost = st.number_input("Unit Cost", min_value=0.0, step=50.0)
     with c3:
-        term = st.selectbox(
-            "Term",
-            ["Term 1", "Term 2", "Term 3"]
-        )
-
+        term = st.selectbox("Term", ["Term 1", "Term 2", "Term 3"])
     with c4:
-        year = st.number_input(
-            "Year",
-            min_value=2020,
-            max_value=2100,
-            value=datetime.now().year
-        )
+        year = st.number_input("Year", min_value=2020, max_value=2100,
+                               value=datetime.now().year)
 
-    if st.button(
-        "📦 Add Stock",
-        type="primary"
-    ):
-
+    if st.button("📦 Add Stock", type="primary"):
         conn = get_connection()
-
         try:
-
             cur = conn.cursor()
-
             cur.execute("""
                 INSERT INTO stock
-                (
-                    school_id,
-                    product_id,
-                    quantity_brought,
-                    term,
-                    year,
-                    unit_cost
-                )
-                VALUES (%s,%s,%s,%s,%s,%s)
-                RETURNING stock_id;
-            """, (
-                school_id,
-                product_id,
-                quantity,
-                term,
-                year,
-                unit_cost
-            ))
-
+                (school_id, product_id, quantity_brought, term, year, unit_cost)
+                VALUES (%s,%s,%s,%s,%s,%s) RETURNING stock_id;
+            """, (school_id, product_id, quantity, term, year, unit_cost))
             stock_id = cur.fetchone()[0]
 
             total_cost = quantity * unit_cost
-
             cur.execute("""
                 INSERT INTO financial_transactions
-                (
-                    transaction_type,
-                    category,
-                    description,
-                    amount,
-                    term,
-                    year,
-                    stock_id
-                )
-                VALUES
-                (
-                    'Stock Purchase',
-                    'Inventory',
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s
-                );
-            """, (
-                f"Stock purchase - {product_name}",
-                total_cost,
-                term,
-                year,
-                stock_id
-            ))
+                (transaction_type, category, description,
+                 amount, term, year, stock_id)
+                VALUES ('Stock Purchase', 'Inventory', %s, %s, %s, %s, %s);
+            """, (f"Stock purchase - {product_name}",
+                  total_cost, term, year, stock_id))
 
             conn.commit()
             cur.close()
             conn.close()
 
+            log_action("CREATE", "stock", stock_id,
+                       f"{quantity} × {product_name} @ {money(unit_cost)}")
+
             st.success("Stock added successfully.")
+            st.rerun()
 
         except Exception as e:
-
             conn.rollback()
             conn.close()
-
             st.error(f"Could not add stock: {e}")
 
     st.markdown("---")
-
     st.markdown("### 📊 Current Stock")
 
     stock_df = fetch_dataframe("""
         SELECT
-            st.stock_id,
-            sc.school_name,
-            p.product_name,
-            st.quantity_brought,
-            st.date_added,
-            st.term,
-            st.year,
-            st.unit_cost
+            st.stock_id, sc.school_name, p.product_name,
+            st.quantity_brought, st.date_added,
+            st.term, st.year, st.unit_cost
         FROM stock st
-        JOIN schools sc
-            ON st.school_id = sc.school_id
-        JOIN products p
-            ON st.product_id = p.product_id
+        JOIN schools sc ON st.school_id = sc.school_id
+        JOIN products p ON st.product_id = p.product_id
         ORDER BY st.date_added DESC;
     """)
 
     if stock_df.empty:
-
         st.info("No stock records yet.")
-
     else:
-
         st.dataframe(
-            stock_df,
-            use_container_width=True,
-            hide_index=True
+            stock_df, use_container_width=True, hide_index=True,
+            column_config={
+                "unit_cost": st.column_config.NumberColumn(
+                    "Unit Cost", format="KSh %.2f"
+                ),
+            }
         )
 
         st.markdown("### Remaining Stock")
 
         remaining = fetch_dataframe("""
+            WITH brought AS (
+                SELECT school_id, product_id, SUM(quantity_brought) AS qty
+                FROM stock GROUP BY school_id, product_id
+            ),
+            sold AS (
+                SELECT s.school_id, si.product_id, SUM(si.quantity) AS qty
+                FROM sale_items si
+                JOIN sales s ON si.sale_id = s.sale_id
+                WHERE si.issued = TRUE
+                GROUP BY s.school_id, si.product_id
+            )
             SELECT
-                sc.school_name,
-                p.product_name,
-                COALESCE(SUM(st.quantity_brought),0)
-                -
-                COALESCE((
-                    SELECT SUM(si.quantity)
-                    FROM sale_items si
-                    JOIN sales s
-                        ON si.sale_id = s.sale_id
-                    WHERE s.school_id = st.school_id
-                      AND si.product_id = st.product_id
-                      AND si.issued = TRUE
-                ),0) AS remaining
-            FROM stock st
-            JOIN schools sc
-                ON st.school_id = sc.school_id
-            JOIN products p
-                ON st.product_id = p.product_id
-            GROUP BY
-                sc.school_name,
-                p.product_name,
-                st.school_id,
-                st.product_id
-            ORDER BY remaining;
+                sc.school_name, p.product_name,
+                COALESCE(b.qty,0) - COALESCE(sl.qty,0) AS remaining
+            FROM brought b
+            JOIN schools sc ON b.school_id = sc.school_id
+            JOIN products p ON b.product_id = p.product_id
+            LEFT JOIN sold sl
+                ON sl.school_id = b.school_id
+               AND sl.product_id = b.product_id
+            ORDER BY remaining ASC;
         """)
 
-        st.dataframe(
-            remaining,
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(remaining, use_container_width=True, hide_index=True)
 
 
 # =========================================================
@@ -2080,194 +1571,90 @@ elif page == "Tailor & Production":
     st.markdown("## 🧵 Tailor & Production")
 
     schools = fetch_dataframe("""
-        SELECT school_id, school_name
-        FROM schools
-        ORDER BY school_name
+        SELECT school_id, school_name FROM schools ORDER BY school_name
     """)
-
     products = fetch_dataframe("""
-        SELECT product_id, product_name
-        FROM products
-        ORDER BY product_name
+        SELECT product_id, product_name FROM products ORDER BY product_name
     """)
 
     c1, c2 = st.columns(2)
-
     with c1:
-
-        school_name = st.selectbox(
-            "School",
-            schools["school_name"].tolist()
-        )
-
-        school_id = int(
-            schools.loc[
-                schools["school_name"] == school_name,
-                "school_id"
-            ].iloc[0]
-        )
-
+        school_name = st.selectbox("School", schools["school_name"].tolist())
+        school_id = int(schools.loc[
+            schools["school_name"] == school_name, "school_id"
+        ].iloc[0])
     with c2:
+        product_name = st.selectbox("Product", products["product_name"].tolist())
+        product_id = int(products.loc[
+            products["product_name"] == product_name, "product_id"
+        ].iloc[0])
 
-        product_name = st.selectbox(
-            "Product",
-            products["product_name"].tolist()
-        )
-
-        product_id = int(
-            products.loc[
-                products["product_name"] == product_name,
-                "product_id"
-            ].iloc[0]
-        )
-
-    tailor_name = st.text_input(
-        "Tailor Name"
-    )
+    tailor_name = st.text_input("Tailor Name")
 
     c1, c2, c3 = st.columns(3)
-
     with c1:
-        quantity = st.number_input(
-            "Quantity Produced",
-            min_value=1,
-            step=1
-        )
-
+        quantity = st.number_input("Quantity Produced", min_value=1, step=1)
     with c2:
-        cost_per_item = st.number_input(
-            "Cost Per Item",
-            min_value=0.0,
-            step=50.0
-        )
-
+        cost_per_item = st.number_input("Cost Per Item", min_value=0.0, step=50.0)
     with c3:
-        term = st.selectbox(
-            "Term",
-            ["Term 1", "Term 2", "Term 3"]
-        )
+        term = st.selectbox("Term", ["Term 1", "Term 2", "Term 3"])
 
-    year = st.number_input(
-        "Year",
-        min_value=2020,
-        max_value=2100,
-        value=datetime.now().year
-    )
-
-    notes = st.text_area(
-        "Notes"
-    )
+    year = st.number_input("Year", min_value=2020, max_value=2100,
+                           value=datetime.now().year)
+    notes = st.text_area("Notes")
 
     amount_paid = quantity * cost_per_item
+    st.info(f"Total tailor payment: {money(amount_paid)}")
 
-    st.info(
-        f"Total tailor payment: {money(amount_paid)}"
-    )
-
-    if st.button(
-        "💳 Record Production",
-        type="primary"
-    ):
-
+    if st.button("💳 Record Production", type="primary"):
         conn = get_connection()
-
         try:
-
             cur = conn.cursor()
-
             cur.execute("""
                 INSERT INTO tailor_production
-                (
-                    school_id,
-                    product_id,
-                    tailor_name,
-                    quantity_produced,
-                    cost_per_item,
-                    amount_paid,
-                    term,
-                    year,
-                    notes
-                )
-                VALUES
-                (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                (school_id, product_id, tailor_name,
+                 quantity_produced, cost_per_item, amount_paid,
+                 term, year, notes)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 RETURNING production_id;
-            """, (
-                school_id,
-                product_id,
-                tailor_name,
-                quantity,
-                cost_per_item,
-                amount_paid,
-                term,
-                year,
-                notes
-            ))
-
+            """, (school_id, product_id, tailor_name, quantity,
+                  cost_per_item, amount_paid, term, year, notes))
             production_id = cur.fetchone()[0]
 
             cur.execute("""
                 INSERT INTO financial_transactions
-                (
-                    transaction_type,
-                    category,
-                    description,
-                    amount,
-                    term,
-                    year,
-                    production_id
-                )
-                VALUES
-                (
-                    'Tailor Payment',
-                    'Production',
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    %s
-                );
-            """, (
-                f"Production - {product_name}",
-                amount_paid,
-                term,
-                year,
-                production_id
-            ))
+                (transaction_type, category, description,
+                 amount, term, year, production_id)
+                VALUES ('Tailor Payment', 'Production', %s,
+                        %s, %s, %s, %s);
+            """, (f"Production - {product_name}",
+                  amount_paid, term, year, production_id))
 
             conn.commit()
-
             cur.close()
             conn.close()
 
+            log_action("CREATE", "production", production_id,
+                       f"{quantity} × {product_name} for {tailor_name}")
+
             st.success("Production recorded successfully.")
+            st.rerun()
 
         except Exception as e:
-
             conn.rollback()
             conn.close()
-
             st.error(f"Could not record production: {e}")
 
     st.markdown("---")
 
     production = fetch_dataframe("""
         SELECT
-            tp.production_id,
-            tp.production_date,
-            sc.school_name,
-            p.product_name,
-            tp.tailor_name,
-            tp.quantity_produced,
-            tp.cost_per_item,
-            tp.amount_paid,
-            tp.term,
-            tp.year,
-            tp.notes
+            tp.production_id, tp.production_date, sc.school_name,
+            p.product_name, tp.tailor_name, tp.quantity_produced,
+            tp.cost_per_item, tp.amount_paid, tp.term, tp.year, tp.notes
         FROM tailor_production tp
-        JOIN schools sc
-            ON tp.school_id = sc.school_id
-        JOIN products p
-            ON tp.product_id = p.product_id
+        JOIN schools sc ON tp.school_id = sc.school_id
+        JOIN products p ON tp.product_id = p.product_id
         ORDER BY tp.production_date DESC;
     """)
 
@@ -2275,9 +1662,15 @@ elif page == "Tailor & Production":
         st.info("No production records yet.")
     else:
         st.dataframe(
-            production,
-            use_container_width=True,
-            hide_index=True
+            production, use_container_width=True, hide_index=True,
+            column_config={
+                "cost_per_item": st.column_config.NumberColumn(
+                    "Cost/Item", format="KSh %.2f"
+                ),
+                "amount_paid": st.column_config.NumberColumn(
+                    "Amount Paid", format="KSh %.2f"
+                ),
+            }
         )
 
 
@@ -2289,292 +1682,134 @@ elif page == "Business Finance":
 
     st.markdown("## 💼 Business Finance")
 
-    # -----------------------------------------------------
-    # INVESTORS
-    # -----------------------------------------------------
-
     investors = fetch_dataframe("""
         SELECT
-            i.investor_id,
-            i.investor_name,
+            i.investor_id, i.investor_name,
             COALESCE(SUM(ft.amount),0) AS capital
         FROM investors i
         LEFT JOIN financial_transactions ft
             ON i.investor_id = ft.investor_id
            AND ft.transaction_type = 'Capital Contribution'
         WHERE i.active = TRUE
-        GROUP BY
-            i.investor_id,
-            i.investor_name
+        GROUP BY i.investor_id, i.investor_name
         ORDER BY i.investor_name;
     """)
 
     st.markdown("### 👥 Investors")
 
     if not investors.empty:
-
         total_capital = investors["capital"].sum()
-
         investors["Ownership %"] = investors["capital"].apply(
-            lambda x:
-                (x / total_capital * 100)
-                if total_capital > 0
-                else 0
+            lambda x: (x / total_capital * 100) if total_capital > 0 else 0
         )
-
         display = investors.copy()
-
         display["capital"] = display["capital"].apply(money)
         display["Ownership %"] = display["Ownership %"].apply(
             lambda x: f"{x:.2f}%"
         )
-
-        st.dataframe(
-            display,
-            use_container_width=True,
-            hide_index=True
-        )
-
-    # -----------------------------------------------------
-    # ADD INVESTMENT
-    # -----------------------------------------------------
+        st.dataframe(display, use_container_width=True, hide_index=True)
 
     st.markdown("### ➕ Additional Investment")
 
-    investor_name = st.selectbox(
-        "Investor",
-        ["Gift", "Ken"]
-    )
-
-    amount = st.number_input(
-        "Amount",
-        min_value=0.0,
-        step=1000.0
-    )
-
+    investor_name = st.selectbox("Investor", ["Gift", "Ken"])
+    amount = st.number_input("Amount", min_value=0.0, step=1000.0)
     description = st.text_input(
-        "Description",
-        value="Additional capital contribution"
+        "Description", value="Additional capital contribution"
     )
 
-    if st.button(
-        "Record Investment",
-        type="primary"
-    ):
-
+    if st.button("Record Investment", type="primary"):
         investor = fetch_dataframe("""
-            SELECT investor_id
-            FROM investors
-            WHERE investor_name = %s;
+            SELECT investor_id FROM investors WHERE investor_name = %s;
         """, (investor_name,))
-
-        investor_id = int(
-            investor.iloc[0]["investor_id"]
-        )
-
-        execute_query("""
-            INSERT INTO financial_transactions
-            (
-                transaction_type,
-                category,
-                description,
-                amount,
-                investor_id
-            )
-            VALUES
-            (
-                'Capital Contribution',
-                'Owner Capital',
-                %s,
-                %s,
-                %s
-            )
-        """, (
-            description,
-            amount,
-            investor_id
-        ))
-
-        st.success("Investment recorded.")
-        st.rerun()
-
-    # -----------------------------------------------------
-    # GENERAL TRANSACTION
-    # -----------------------------------------------------
+        if investor.empty:
+            st.error("Investor not found.")
+        else:
+            investor_id = int(investor.iloc[0]["investor_id"])
+            ok, _ = safe_execute("""
+                INSERT INTO financial_transactions
+                (transaction_type, category, description, amount, investor_id)
+                VALUES ('Capital Contribution', 'Owner Capital', %s, %s, %s)
+            """, (description, amount, investor_id),
+                error_message="Could not record investment.")
+            if ok:
+                log_action("CREATE", "capital", investor_id,
+                           f"{money(amount)} for {investor_name}")
+                st.success("Investment recorded.")
+                st.rerun()
 
     st.markdown("---")
     st.markdown("### 💸 Record Financial Transaction")
 
     transaction_type = st.selectbox(
         "Transaction Type",
-        [
-            "Expense",
-            "Other Income",
-            "Owner Withdrawal",
-            "Profit Distribution"
-        ]
+        ["Expense", "Other Income", "Owner Withdrawal", "Profit Distribution"]
     )
+    category = st.text_input("Category")
+    description = st.text_input("Description")
+    amount = st.number_input("Amount", min_value=0.0, step=100.0,
+                             key="finance_amount")
 
-    category = st.text_input(
-        "Category"
-    )
-
-    description = st.text_input(
-        "Description"
-    )
-
-    amount = st.number_input(
-        "Amount",
-        min_value=0.0,
-        step=100.0,
-        key="finance_amount"
-    )
-
-    if st.button(
-        "Record Transaction"
-    ):
-
-        execute_query("""
+    if st.button("Record Transaction"):
+        ok, _ = safe_execute("""
             INSERT INTO financial_transactions
-            (
-                transaction_type,
-                category,
-                description,
-                amount
-            )
+            (transaction_type, category, description, amount)
             VALUES (%s,%s,%s,%s)
-        """, (
-            transaction_type,
-            category,
-            description,
-            amount
-        ))
-
-        st.success("Transaction recorded.")
-        st.rerun()
-
-    # -----------------------------------------------------
-    # FINANCIAL SUMMARY
-    # -----------------------------------------------------
+        """, (transaction_type, category, description, amount),
+            error_message="Could not record transaction.")
+        if ok:
+            st.success("Transaction recorded.")
+            st.rerun()
 
     st.markdown("---")
     st.markdown("### 📊 Financial Summary")
 
-    revenue = fetch_dataframe("""
-        SELECT COALESCE(SUM(amount),0) AS value
-        FROM financial_transactions
-        WHERE transaction_type = 'Sales Income'
-    """).iloc[0]["value"]
+    def get_sum(t):
+        return float(fetch_dataframe("""
+            SELECT COALESCE(SUM(amount),0) AS value
+            FROM financial_transactions WHERE transaction_type = %s
+        """, (t,)).iloc[0]["value"])
 
-    stock_purchases = fetch_dataframe("""
-        SELECT COALESCE(SUM(amount),0) AS value
-        FROM financial_transactions
-        WHERE transaction_type = 'Stock Purchase'
-    """).iloc[0]["value"]
-
-    tailor_payments = fetch_dataframe("""
-        SELECT COALESCE(SUM(amount),0) AS value
-        FROM financial_transactions
-        WHERE transaction_type = 'Tailor Payment'
-    """).iloc[0]["value"]
-
-    expenses = fetch_dataframe("""
-        SELECT COALESCE(SUM(amount),0) AS value
-        FROM financial_transactions
-        WHERE transaction_type = 'Expense'
-    """).iloc[0]["value"]
-
-    other_income = fetch_dataframe("""
-        SELECT COALESCE(SUM(amount),0) AS value
-        FROM financial_transactions
-        WHERE transaction_type = 'Other Income'
-    """).iloc[0]["value"]
-
-    withdrawals = fetch_dataframe("""
-        SELECT COALESCE(SUM(amount),0) AS value
-        FROM financial_transactions
-        WHERE transaction_type = 'Owner Withdrawal'
-    """).iloc[0]["value"]
-
-    distributions = fetch_dataframe("""
-        SELECT COALESCE(SUM(amount),0) AS value
-        FROM financial_transactions
-        WHERE transaction_type = 'Profit Distribution'
-    """).iloc[0]["value"]
+    revenue = get_sum("Sales Income")
+    stock_purchases = get_sum("Stock Purchase")
+    tailor_payments = get_sum("Tailor Payment")
+    expenses = get_sum("Expense")
+    other_income = get_sum("Other Income")
+    withdrawals = get_sum("Owner Withdrawal")
+    distributions = get_sum("Profit Distribution")
 
     capital = investors["capital"].sum() if not investors.empty else 0
 
-    gross_profit = (
-        float(revenue)
-        - float(stock_purchases)
-        - float(tailor_payments)
-    )
-
-    net_profit = (
-        gross_profit
-        + float(other_income)
-        - float(expenses)
-    )
-
+    gross_profit = float(revenue) - float(stock_purchases) - float(tailor_payments)
+    net_profit = gross_profit + float(other_income) - float(expenses)
     cash_position = (
-        float(capital)
-        + float(revenue)
-        + float(other_income)
-        - float(stock_purchases)
-        - float(tailor_payments)
-        - float(expenses)
-        - float(withdrawals)
-        - float(distributions)
+        float(capital) + float(revenue) + float(other_income)
+        - float(stock_purchases) - float(tailor_payments)
+        - float(expenses) - float(withdrawals) - float(distributions)
     )
 
     c1, c2, c3, c4 = st.columns(4)
-
-    with c1:
-        st.metric(
-            "Capital",
-            money(capital)
-        )
-
-    with c2:
-        st.metric(
-            "Revenue",
-            money(revenue)
-        )
-
-    with c3:
-        st.metric(
-            "Net Profit",
-            money(net_profit)
-        )
-
-    with c4:
-        st.metric(
-            "Cash Position",
-            money(cash_position)
-        )
+    with c1: st.metric("Capital", money(capital))
+    with c2: st.metric("Revenue", money(revenue))
+    with c3: st.metric("Net Profit", money(net_profit))
+    with c4: st.metric("Cash Position", money(cash_position))
 
     st.markdown("### 📒 Financial Ledger")
 
     ledger = fetch_dataframe("""
-        SELECT
-            transaction_id,
-            transaction_date,
-            transaction_type,
-            category,
-            description,
-            amount,
-            term,
-            year
+        SELECT transaction_id, transaction_date, transaction_type,
+               category, description, amount, term, year
         FROM financial_transactions
         ORDER BY transaction_date DESC;
     """)
 
     if not ledger.empty:
-
         st.dataframe(
-            ledger,
-            use_container_width=True,
-            hide_index=True
+            ledger, use_container_width=True, hide_index=True,
+            column_config={
+                "amount": st.column_config.NumberColumn(
+                    "Amount", format="KSh %.2f"
+                ),
+            }
         )
 
 
@@ -2585,105 +1820,65 @@ elif page == "Business Finance":
 elif page == "ML & Forecasting":
 
     st.markdown("## 🤖 ML & Forecasting")
-
     st.info(
-        "This section uses the business data already collected by the system. "
-        "More advanced forecasting models can be added once enough real sales "
-        "history exists."
+        "This section uses the business data already collected by the "
+        "system. More advanced forecasting models can be added once "
+        "enough real sales history exists."
     )
 
-    # -----------------------------------------------------
-    # DAILY REVENUE
-    # -----------------------------------------------------
-
     daily = fetch_dataframe("""
-        SELECT
-            DATE(sale_date) AS sale_day,
-            SUM(total_amount) AS revenue
+        SELECT DATE(sale_date) AS sale_day, SUM(total_amount) AS revenue
         FROM sales
         GROUP BY DATE(sale_date)
         ORDER BY sale_day;
     """)
 
     if daily.empty:
-
-        st.warning(
-            "There is not enough sales data for forecasting yet."
-        )
-
+        st.warning("There is not enough sales data for forecasting yet.")
     else:
-
         st.markdown("### 📈 Historical Revenue")
-
-        daily["sale_day"] = pd.to_datetime(
-            daily["sale_day"]
-        )
-
-        st.line_chart(
-            daily.set_index("sale_day")["revenue"]
-        )
+        daily["sale_day"] = pd.to_datetime(daily["sale_day"])
+        st.line_chart(daily.set_index("sale_day")["revenue"])
 
         if len(daily) >= 3:
-
-            average_daily = daily["revenue"].tail(7).mean()
-
-            st.metric(
-                "Recent Average Daily Revenue",
-                money(average_daily)
-            )
-
-    # -----------------------------------------------------
-    # PRODUCT DEMAND
-    # -----------------------------------------------------
+            avg = daily["revenue"].tail(7).mean()
+            st.metric("Recent Average Daily Revenue", money(avg))
 
     st.markdown("### 🧮 Product Demand")
 
     demand = fetch_dataframe("""
-        SELECT
-            p.product_name,
-            SUM(si.quantity) AS units_sold,
-            SUM(si.line_total) AS revenue
+        SELECT p.product_name,
+               SUM(si.quantity) AS units_sold,
+               SUM(si.line_total) AS revenue
         FROM sale_items si
-        JOIN products p
-            ON si.product_id = p.product_id
+        JOIN products p ON si.product_id = p.product_id
         WHERE si.issued = TRUE
         GROUP BY p.product_name
         ORDER BY units_sold DESC;
     """)
 
     if demand.empty:
-
         st.info("No sales data available.")
-
     else:
-
         st.dataframe(
-            demand,
-            use_container_width=True,
-            hide_index=True
+            demand, use_container_width=True, hide_index=True,
+            column_config={
+                "revenue": st.column_config.NumberColumn(
+                    "Revenue", format="KSh %.2f"
+                ),
+            }
         )
-
-        st.bar_chart(
-            demand.set_index("product_name")["units_sold"]
-        )
+        st.bar_chart(demand.set_index("product_name")["units_sold"])
 
     st.markdown("---")
-
     st.markdown("### 🔬 Future ML Features")
-
     st.write("""
     • Demand forecasting by product
-
     • School-level sales forecasting
-
     • Stock replenishment prediction
-
     • Customer purchasing patterns
-
     • Seasonal demand analysis
-
     • Sales anomaly detection
-
     • Profit forecasting
     """)
 
@@ -2697,500 +1892,321 @@ elif page == "System Management":
     st.markdown("## ⚙️ System Management")
 
     tabs = st.tabs([
-        "Sales",
-        "Stock",
-        "Production",
-        "Finance",
-        "Products",
-        "Schools"
+        "Sales", "Stock", "Production", "Finance",
+        "Products", "Schools", "Audit Log", "Danger Zone"
     ])
 
-    # =====================================================
-    # SALES MANAGEMENT
-    # =====================================================
-
+    # ---------- SALES ----------
     with tabs[0]:
-
         st.markdown("### 🧾 Manage Sales")
 
         sales = fetch_dataframe("""
-            SELECT
-                s.sale_id,
-                s.sale_date,
-                sc.school_name,
-                c.customer_name,
-                s.class_name,
-                s.total_amount,
-                s.payment_method,
-                s.payment_status,
-                s.term,
-                s.year
+            SELECT s.sale_id, s.sale_date, sc.school_name,
+                   c.customer_name, s.class_name, s.total_amount,
+                   s.payment_method, s.payment_status, s.term, s.year
             FROM sales s
-            LEFT JOIN schools sc
-                ON s.school_id = sc.school_id
-            LEFT JOIN customers c
-                ON s.customer_id = c.customer_id
+            LEFT JOIN schools sc ON s.school_id = sc.school_id
+            LEFT JOIN customers c ON s.customer_id = c.customer_id
             ORDER BY s.sale_date DESC;
         """)
 
         if sales.empty:
-
             st.info("No sales to manage.")
-
         else:
-
             st.dataframe(
-                sales,
-                use_container_width=True,
-                hide_index=True
+                sales, use_container_width=True, hide_index=True,
+                column_config={
+                    "total_amount": st.column_config.NumberColumn(
+                        "Amount", format="KSh %.2f"
+                    ),
+                }
             )
 
-            selected_sale = st.selectbox(
-                "Select Sale",
-                sales["sale_id"].tolist()
-            )
-
-            receipt = get_receipt(
-                int(selected_sale)
-            )
+            selected_sale = st.selectbox("Select Sale", sales["sale_id"].tolist())
+            receipt = get_receipt(int(selected_sale))
 
             if receipt:
-
                 h = receipt["header"]
-
                 st.markdown("#### Edit Sale")
 
                 schools = fetch_dataframe("""
-                    SELECT school_id, school_name
-                    FROM schools
+                    SELECT school_id, school_name FROM schools
                     ORDER BY school_name
                 """)
-
                 school_options = schools["school_name"].tolist()
-
                 current_school = h["school_name"]
+                school_index = (school_options.index(current_school)
+                                if current_school in school_options else 0)
 
-                school_index = (
-                    school_options.index(current_school)
-                    if current_school in school_options
-                    else 0
-                )
-
-                new_school_name = st.selectbox(
-                    "School",
-                    school_options,
-                    index=school_index,
-                    key="edit_sale_school"
-                )
-
-                new_customer = st.text_input(
-                    "Customer",
-                    value=h["customer_name"] or "",
-                    key="edit_customer"
-                )
-
-                new_phone = st.text_input(
-                    "Phone",
-                    value=h["phone"] or "",
-                    key="edit_phone"
-                )
-
-                new_class = st.text_input(
-                    "Class",
-                    value=h["class_name"] or "",
-                    key="edit_class"
-                )
-
+                new_school_name = st.selectbox("School", school_options,
+                                                index=school_index,
+                                                key="edit_sale_school")
+                new_customer = st.text_input("Customer",
+                                             value=h["customer_name"] or "",
+                                             key="edit_customer")
+                new_phone = st.text_input("Phone", value=h["phone"] or "",
+                                          key="edit_phone")
+                new_class = st.text_input("Class", value=h["class_name"] or "",
+                                          key="edit_class")
                 new_term = st.selectbox(
-                    "Term",
-                    ["Term 1", "Term 2", "Term 3"],
-                    index=(
-                        ["Term 1", "Term 2", "Term 3"].index(h["term"])
-                        if h["term"] in ["Term 1", "Term 2", "Term 3"]
-                        else 0
-                    ),
+                    "Term", ["Term 1", "Term 2", "Term 3"],
+                    index=(["Term 1", "Term 2", "Term 3"].index(h["term"])
+                           if h["term"] in ["Term 1", "Term 2", "Term 3"] else 0),
                     key="edit_term"
                 )
-
                 new_payment = st.selectbox(
-                    "Payment Method",
-                    ["Cash", "M-Pesa", "Bank", "Other"],
-                    index=(
-                        ["Cash", "M-Pesa", "Bank", "Other"].index(
-                            h["payment_method"]
-                        )
-                        if h["payment_method"] in
-                        ["Cash", "M-Pesa", "Bank", "Other"]
-                        else 0
-                    ),
+                    "Payment Method", ["Cash", "M-Pesa", "Bank", "Other"],
+                    index=(["Cash", "M-Pesa", "Bank", "Other"].index(h["payment_method"])
+                           if h["payment_method"] in ["Cash", "M-Pesa", "Bank", "Other"] else 0),
                     key="edit_payment"
                 )
-
                 new_status = st.selectbox(
-                    "Payment Status",
-                    ["Paid", "Pending", "Cancelled"],
-                    index=(
-                        ["Paid", "Pending", "Cancelled"].index(
-                            h["payment_status"]
-                        )
-                        if h["payment_status"] in
-                        ["Paid", "Pending", "Cancelled"]
-                        else 0
-                    ),
+                    "Payment Status", ["Paid", "Pending", "Cancelled"],
+                    index=(["Paid", "Pending", "Cancelled"].index(h["payment_status"])
+                           if h["payment_status"] in ["Paid", "Pending", "Cancelled"] else 0),
                     key="edit_status"
                 )
-
                 new_year = st.number_input(
-                    "Year",
-                    min_value=2020,
-                    max_value=2100,
+                    "Year", min_value=2020, max_value=2100,
                     value=int(h["year"] or datetime.now().year),
                     key="edit_year"
                 )
 
-                if st.button(
-                    "💾 Save Sale Changes",
-                    type="primary"
-                ):
+                if st.button("💾 Save Sale Changes", type="primary"):
+                    school_id = int(schools.loc[
+                        schools["school_name"] == new_school_name, "school_id"
+                    ].iloc[0])
 
-                    school_id = int(
-                        schools.loc[
-                            schools["school_name"] == new_school_name,
-                            "school_id"
-                        ].iloc[0]
-                    )
-
-                    execute_query("""
+                    ok1, _ = safe_execute("""
                         UPDATE customers
-                        SET
-                            customer_name = %s,
-                            phone = %s
+                        SET customer_name = %s, phone = %s
                         WHERE customer_id = (
-                            SELECT customer_id
-                            FROM sales
-                            WHERE sale_id = %s
+                            SELECT customer_id FROM sales WHERE sale_id = %s
                         );
-                    """, (
-                        new_customer,
-                        new_phone,
-                        selected_sale
-                    ))
+                    """, (new_customer, new_phone, selected_sale),
+                        error_message="Could not update customer.")
 
-                    execute_query("""
+                    ok2, _ = safe_execute("""
                         UPDATE sales
-                        SET
-                            school_id = %s,
-                            class_name = %s,
-                            payment_method = %s,
-                            payment_status = %s,
-                            term = %s,
-                            year = %s
+                        SET school_id = %s, class_name = %s,
+                            payment_method = %s, payment_status = %s,
+                            term = %s, year = %s
                         WHERE sale_id = %s;
-                    """, (
-                        school_id,
-                        new_class,
-                        new_payment,
-                        new_status,
-                        new_term,
-                        new_year,
-                        selected_sale
-                    ))
+                    """, (school_id, new_class, new_payment, new_status,
+                          new_term, new_year, selected_sale),
+                        error_message="Could not update sale.")
 
-                    st.success("Sale updated.")
-                    st.rerun()
+                    # Keep linked ledger in sync
+                    safe_execute("""
+                        UPDATE financial_transactions
+                        SET amount = (
+                            SELECT total_amount FROM sales WHERE sale_id = %s
+                        )
+                        WHERE sale_id = %s;
+                    """, (selected_sale, selected_sale))
+
+                    if ok1 and ok2:
+                        log_action("UPDATE", "sale", selected_sale,
+                                   f"Updated sale #{selected_sale}")
+                        st.success("Sale updated.")
+                        st.rerun()
 
                 st.markdown("---")
-
-                if st.button(
-                    "🖨️ Print This Receipt",
-                    key="print_old_receipt"
-                ):
-                    render_receipt(
-                        get_receipt(selected_sale)
-                    )
+                if st.button("🖨️ Print This Receipt", key="print_old_receipt"):
+                    render_receipt(get_receipt(selected_sale))
 
                 st.markdown("### ⚠️ Delete Sale")
-
                 confirm_delete = st.checkbox(
                     "I understand that deleting this sale cannot be undone.",
                     key="confirm_sale_delete"
                 )
 
-                if st.button(
-                    "🗑️ Delete Sale",
-                    disabled=not confirm_delete
-                ):
+                if st.button("🗑️ Delete Sale", disabled=not confirm_delete):
+                    ok, _ = safe_execute("""
+                        DELETE FROM sales WHERE sale_id = %s;
+                    """, (selected_sale,),
+                        error_message="Could not delete sale.")
+                    if ok:
+                        log_action("DELETE", "sale", selected_sale,
+                                   f"Deleted sale #{selected_sale}")
+                        st.success(f"Sale #{selected_sale} deleted.")
+                        st.rerun()
 
-                    execute_query("""
-                        DELETE FROM sales
-                        WHERE sale_id = %s;
-                    """, (selected_sale,))
-
-                    st.success(
-                        f"Sale #{selected_sale} deleted."
-                    )
-
-                    st.rerun()
-
-    # =====================================================
-    # STOCK MANAGEMENT
-    # =====================================================
-
+    # ---------- STOCK ----------
     with tabs[1]:
-
         st.markdown("### 📦 Manage Stock")
 
         stock = fetch_dataframe("""
-            SELECT
-                st.stock_id,
-                sc.school_name,
-                p.product_name,
-                st.quantity_brought,
-                st.unit_cost,
-                st.term,
-                st.year,
-                st.date_added
+            SELECT st.stock_id, sc.school_name, p.product_name,
+                   st.quantity_brought, st.unit_cost,
+                   st.term, st.year, st.date_added
             FROM stock st
-            JOIN schools sc
-                ON st.school_id = sc.school_id
-            JOIN products p
-                ON st.product_id = p.product_id
+            JOIN schools sc ON st.school_id = sc.school_id
+            JOIN products p ON st.product_id = p.product_id
             ORDER BY st.date_added DESC;
         """)
 
         if stock.empty:
-
             st.info("No stock records.")
-
         else:
-
             st.dataframe(
-                stock,
-                use_container_width=True,
-                hide_index=True
+                stock, use_container_width=True, hide_index=True,
+                column_config={
+                    "unit_cost": st.column_config.NumberColumn(
+                        "Unit Cost", format="KSh %.2f"
+                    ),
+                }
             )
 
-            stock_id = st.selectbox(
-                "Select Stock Record",
-                stock["stock_id"].tolist()
-            )
-
-            row = stock[
-                stock["stock_id"] == stock_id
-            ].iloc[0]
+            stock_id = st.selectbox("Select Stock Record",
+                                    stock["stock_id"].tolist())
+            row = stock[stock["stock_id"] == stock_id].iloc[0]
 
             new_quantity = st.number_input(
-                "Quantity",
-                min_value=0,
+                "Quantity", min_value=0,
                 value=int(row["quantity_brought"]),
                 key=f"stock_qty_{stock_id}"
             )
-
             new_cost = st.number_input(
-                "Unit Cost",
-                min_value=0.0,
+                "Unit Cost", min_value=0.0,
                 value=float(row["unit_cost"] or 0),
                 key=f"stock_cost_{stock_id}"
             )
 
-            if st.button(
-                "💾 Save Stock Changes"
-            ):
-
-                execute_query("""
+            if st.button("💾 Save Stock Changes"):
+                ok, _ = safe_execute("""
                     UPDATE stock
-                    SET
-                        quantity_brought = %s,
-                        unit_cost = %s
+                    SET quantity_brought = %s, unit_cost = %s
                     WHERE stock_id = %s;
-                """, (
-                    new_quantity,
-                    new_cost,
-                    stock_id
-                ))
+                """, (new_quantity, new_cost, stock_id),
+                    error_message="Could not update stock.")
+                if ok:
+                    safe_execute("""
+                        UPDATE financial_transactions
+                        SET amount = %s
+                        WHERE stock_id = %s;
+                    """, (new_quantity * new_cost, stock_id))
+                    log_action("UPDATE", "stock", stock_id,
+                               f"Qty={new_quantity}, Cost={money(new_cost)}")
+                    st.success("Stock updated.")
+                    st.rerun()
 
-                execute_query("""
-                    UPDATE financial_transactions
-                    SET amount = %s
-                    WHERE stock_id = %s;
-                """, (
-                    new_quantity * new_cost,
-                    stock_id
-                ))
+            confirm = st.checkbox("Confirm stock deletion",
+                                  key=f"delete_stock_confirm_{stock_id}")
+            if st.button("🗑️ Delete Stock", disabled=not confirm):
+                ok, _ = safe_execute("""
+                    DELETE FROM stock WHERE stock_id = %s;
+                """, (stock_id,), error_message="Could not delete stock.")
+                if ok:
+                    log_action("DELETE", "stock", stock_id,
+                               f"Deleted stock record #{stock_id}")
+                    st.success("Stock deleted.")
+                    st.rerun()
 
-                st.success("Stock updated.")
-                st.rerun()
-
-            confirm = st.checkbox(
-                "Confirm stock deletion",
-                key=f"delete_stock_confirm_{stock_id}"
-            )
-
-            if st.button(
-                "🗑️ Delete Stock",
-                disabled=not confirm
-            ):
-
-                execute_query("""
-                    DELETE FROM stock
-                    WHERE stock_id = %s;
-                """, (stock_id,))
-
-                st.success("Stock deleted.")
-                st.rerun()
-
-    # =====================================================
-    # PRODUCTION MANAGEMENT
-    # =====================================================
-
+    # ---------- PRODUCTION ----------
     with tabs[2]:
-
         st.markdown("### 🧵 Manage Production")
 
         production = fetch_dataframe("""
-            SELECT
-                tp.production_id,
-                tp.production_date,
-                sc.school_name,
-                p.product_name,
-                tp.tailor_name,
-                tp.quantity_produced,
-                tp.cost_per_item,
-                tp.amount_paid,
-                tp.term,
-                tp.year
+            SELECT tp.production_id, tp.production_date,
+                   sc.school_name, p.product_name, tp.tailor_name,
+                   tp.quantity_produced, tp.cost_per_item,
+                   tp.amount_paid, tp.term, tp.year
             FROM tailor_production tp
-            JOIN schools sc
-                ON tp.school_id = sc.school_id
-            JOIN products p
-                ON tp.product_id = p.product_id
+            JOIN schools sc ON tp.school_id = sc.school_id
+            JOIN products p ON tp.product_id = p.product_id
             ORDER BY tp.production_date DESC;
         """)
 
         if production.empty:
-
             st.info("No production records.")
-
         else:
-
             st.dataframe(
-                production,
-                use_container_width=True,
-                hide_index=True
+                production, use_container_width=True, hide_index=True,
+                column_config={
+                    "cost_per_item": st.column_config.NumberColumn(
+                        "Cost/Item", format="KSh %.2f"
+                    ),
+                    "amount_paid": st.column_config.NumberColumn(
+                        "Amount Paid", format="KSh %.2f"
+                    ),
+                }
             )
 
-            production_id = st.selectbox(
-                "Select Production Record",
-                production["production_id"].tolist()
-            )
-
-            row = production[
-                production["production_id"] == production_id
-            ].iloc[0]
+            production_id = st.selectbox("Select Production Record",
+                                          production["production_id"].tolist())
+            row = production[production["production_id"] == production_id].iloc[0]
 
             quantity = st.number_input(
-                "Quantity Produced",
-                min_value=0,
+                "Quantity Produced", min_value=0,
                 value=int(row["quantity_produced"]),
                 key=f"prod_qty_{production_id}"
             )
-
             cost = st.number_input(
-                "Cost Per Item",
-                min_value=0.0,
+                "Cost Per Item", min_value=0.0,
                 value=float(row["cost_per_item"]),
                 key=f"prod_cost_{production_id}"
             )
 
-            if st.button(
-                "💾 Save Production Changes"
-            ):
-
+            if st.button("💾 Save Production Changes"):
                 amount = quantity * cost
-
-                execute_query("""
+                ok, _ = safe_execute("""
                     UPDATE tailor_production
-                    SET
-                        quantity_produced = %s,
+                    SET quantity_produced = %s,
                         cost_per_item = %s,
                         amount_paid = %s
                     WHERE production_id = %s;
-                """, (
-                    quantity,
-                    cost,
-                    amount,
-                    production_id
-                ))
+                """, (quantity, cost, amount, production_id),
+                    error_message="Could not update production.")
+                if ok:
+                    safe_execute("""
+                        UPDATE financial_transactions
+                        SET amount = %s
+                        WHERE production_id = %s;
+                    """, (amount, production_id))
+                    log_action("UPDATE", "production", production_id,
+                               f"Qty={quantity}, Amount={money(amount)}")
+                    st.success("Production updated.")
+                    st.rerun()
 
-                execute_query("""
-                    UPDATE financial_transactions
-                    SET amount = %s
-                    WHERE production_id = %s;
-                """, (
-                    amount,
-                    production_id
-                ))
+            confirm = st.checkbox("Confirm production deletion",
+                                  key=f"delete_prod_{production_id}")
+            if st.button("🗑️ Delete Production", disabled=not confirm):
+                ok, _ = safe_execute("""
+                    DELETE FROM tailor_production WHERE production_id = %s;
+                """, (production_id,),
+                    error_message="Could not delete production.")
+                if ok:
+                    log_action("DELETE", "production", production_id,
+                               f"Deleted production #{production_id}")
+                    st.success("Production deleted.")
+                    st.rerun()
 
-                st.success("Production updated.")
-                st.rerun()
-
-            confirm = st.checkbox(
-                "Confirm production deletion",
-                key=f"delete_prod_{production_id}"
-            )
-
-            if st.button(
-                "🗑️ Delete Production",
-                disabled=not confirm
-            ):
-
-                execute_query("""
-                    DELETE FROM tailor_production
-                    WHERE production_id = %s;
-                """, (production_id,))
-
-                st.success("Production deleted.")
-                st.rerun()
-
-    # =====================================================
-    # FINANCE MANAGEMENT
-    # =====================================================
-
+    # ---------- FINANCE ----------
     with tabs[3]:
-
         st.markdown("### 💼 Manage Finance")
 
         finance = fetch_dataframe("""
-            SELECT
-                transaction_id,
-                transaction_date,
-                transaction_type,
-                category,
-                description,
-                amount,
-                sale_id,
-                stock_id,
-                production_id
+            SELECT transaction_id, transaction_date, transaction_type,
+                   category, description, amount,
+                   sale_id, stock_id, production_id
             FROM financial_transactions
             ORDER BY transaction_date DESC;
         """)
 
         st.dataframe(
-            finance,
-            use_container_width=True,
-            hide_index=True
+            finance, use_container_width=True, hide_index=True,
+            column_config={
+                "amount": st.column_config.NumberColumn(
+                    "Amount", format="KSh %.2f"
+                ),
+            }
         )
 
         if not finance.empty:
-
-            transaction_id = st.selectbox(
-                "Select Transaction",
-                finance["transaction_id"].tolist()
-            )
-
-            row = finance[
-                finance["transaction_id"] == transaction_id
-            ].iloc[0]
+            transaction_id = st.selectbox("Select Transaction",
+                                           finance["transaction_id"].tolist())
+            row = finance[finance["transaction_id"] == transaction_id].iloc[0]
 
             linked = (
                 pd.notna(row["sale_id"])
@@ -3199,295 +2215,252 @@ elif page == "System Management":
             )
 
             if linked:
-
                 st.info(
-                    "This transaction is linked to a sale, stock record "
-                    "or production record. Edit the source record instead "
-                    "of changing this transaction directly."
+                    "This transaction is linked to a sale, stock record, or "
+                    "production record. Edit the source record instead of "
+                    "changing this transaction directly."
                 )
-
             else:
-
                 amount = st.number_input(
-                    "Amount",
-                    min_value=0.0,
+                    "Amount", min_value=0.0,
                     value=float(row["amount"] or 0),
                     key=f"finance_edit_{transaction_id}"
                 )
-
                 description = st.text_input(
-                    "Description",
-                    value=row["description"] or "",
+                    "Description", value=row["description"] or "",
                     key=f"finance_desc_{transaction_id}"
                 )
 
-                if st.button(
-                    "💾 Save Finance Changes"
-                ):
-
-                    execute_query("""
+                if st.button("💾 Save Finance Changes"):
+                    ok, _ = safe_execute("""
                         UPDATE financial_transactions
-                        SET
-                            amount = %s,
-                            description = %s
+                        SET amount = %s, description = %s
                         WHERE transaction_id = %s;
-                    """, (
-                        amount,
-                        description,
-                        transaction_id
-                    ))
+                    """, (amount, description, transaction_id),
+                        error_message="Could not update transaction.")
+                    if ok:
+                        log_action("UPDATE", "finance", transaction_id,
+                                   f"Amount={money(amount)}")
+                        st.success("Transaction updated.")
+                        st.rerun()
 
-                    st.success("Transaction updated.")
-                    st.rerun()
-
-                confirm = st.checkbox(
-                    "Confirm transaction deletion",
-                    key=f"delete_finance_{transaction_id}"
-                )
-
-                if st.button(
-                    "🗑️ Delete Transaction",
-                    disabled=not confirm
-                ):
-
-                    execute_query("""
+                confirm = st.checkbox("Confirm transaction deletion",
+                                      key=f"delete_finance_{transaction_id}")
+                if st.button("🗑️ Delete Transaction", disabled=not confirm):
+                    ok, _ = safe_execute("""
                         DELETE FROM financial_transactions
                         WHERE transaction_id = %s;
-                    """, (transaction_id,))
+                    """, (transaction_id,),
+                        error_message="Could not delete transaction.")
+                    if ok:
+                        log_action("DELETE", "finance", transaction_id,
+                                   f"Deleted transaction #{transaction_id}")
+                        st.success("Transaction deleted.")
+                        st.rerun()
 
-                    st.success("Transaction deleted.")
-                    st.rerun()
-
-    # =====================================================
-    # PRODUCT MANAGEMENT
-    # =====================================================
-
+    # ---------- PRODUCTS ----------
     with tabs[4]:
-
         st.markdown("### 👕 Manage Products")
 
         products = fetch_dataframe("""
-            SELECT
-                product_id,
-                product_name,
-                price,
-                cost_price
-            FROM products
-            ORDER BY product_name;
+            SELECT product_id, product_name, price, cost_price
+            FROM products ORDER BY product_name;
         """)
 
         st.dataframe(
-            products,
-            use_container_width=True,
-            hide_index=True
+            products, use_container_width=True, hide_index=True,
+            column_config={
+                "price": st.column_config.NumberColumn(
+                    "Selling Price", format="KSh %.2f"
+                ),
+                "cost_price": st.column_config.NumberColumn(
+                    "Cost Price", format="KSh %.2f"
+                ),
+            }
         )
 
-        product_id = st.selectbox(
-            "Select Product",
-            products["product_id"].tolist()
-        )
+        product_id = st.selectbox("Select Product", products["product_id"].tolist())
+        row = products[products["product_id"] == product_id].iloc[0]
 
-        row = products[
-            products["product_id"] == product_id
-        ].iloc[0]
+        name = st.text_input("Product Name", value=row["product_name"],
+                             key=f"product_name_{product_id}")
+        price = st.number_input("Selling Price", min_value=0.0,
+                                value=float(row["price"]),
+                                key=f"product_price_{product_id}")
+        cost = st.number_input("Cost Price", min_value=0.0,
+                               value=float(row["cost_price"]),
+                               key=f"product_cost_{product_id}")
 
-        name = st.text_input(
-            "Product Name",
-            value=row["product_name"],
-            key=f"product_name_{product_id}"
-        )
-
-        price = st.number_input(
-            "Selling Price",
-            min_value=0.0,
-            value=float(row["price"]),
-            key=f"product_price_{product_id}"
-        )
-
-        cost = st.number_input(
-            "Cost Price",
-            min_value=0.0,
-            value=float(row["cost_price"]),
-            key=f"product_cost_{product_id}"
-        )
-
-        if st.button(
-            "💾 Save Product Changes"
-        ):
-
-            try:
-
-                execute_query("""
-                    UPDATE products
-                    SET
-                        product_name = %s,
-                        price = %s,
-                        cost_price = %s
-                    WHERE product_id = %s;
-                """, (
-                    name.strip(),
-                    price,
-                    cost,
-                    product_id
-                ))
-
+        if st.button("💾 Save Product Changes"):
+            ok, _ = safe_execute("""
+                UPDATE products
+                SET product_name = %s, price = %s, cost_price = %s
+                WHERE product_id = %s;
+            """, (name.strip(), price, cost, product_id),
+                error_message="Could not update product.")
+            if ok:
+                log_action("UPDATE", "product", product_id,
+                           f"Name={name}, Price={money(price)}")
                 st.success("Product updated.")
                 st.rerun()
-
-            except Exception as e:
-
-                st.error(
-                    f"Could not update product: {e}"
-                )
 
         st.markdown("### 🗑️ Delete Product")
 
         confirm = st.checkbox(
-            "I understand that a product cannot be deleted if it is already being used."
+            "I understand that a product cannot be deleted if it is already "
+            "being used in sales, stock, or production."
         )
 
-        if st.button(
-            "Delete Product",
-            disabled=not confirm
-        ):
-
-            try:
-
-                execute_query("""
-                    DELETE FROM products
-                    WHERE product_id = %s;
-                """, (product_id,))
-
+        if st.button("Delete Product", disabled=not confirm):
+            ok, _ = safe_execute("""
+                DELETE FROM products WHERE product_id = %s;
+            """, (product_id,),
+                error_message=(
+                    "Product cannot be deleted because it is already "
+                    "referenced by business records."
+                ))
+            if ok:
+                log_action("DELETE", "product", product_id,
+                           f"Deleted product {row['product_name']}")
                 st.success("Product deleted.")
                 st.rerun()
 
-            except Exception as e:
-
-                st.error(
-                    "Product cannot be deleted because it is "
-                    "already referenced by business records."
-                )
-
-    # =====================================================
-    # SCHOOL MANAGEMENT
-    # =====================================================
-
+    # ---------- SCHOOLS ----------
     with tabs[5]:
-
         st.markdown("### 🏫 Manage Schools")
 
         schools = fetch_dataframe("""
-            SELECT
-                school_id,
-                school_name
-            FROM schools
-            ORDER BY school_name;
+            SELECT school_id, school_name FROM schools ORDER BY school_name;
         """)
 
-        st.dataframe(
-            schools,
-            use_container_width=True,
-            hide_index=True
-        )
+        st.dataframe(schools, use_container_width=True, hide_index=True)
 
-        school_id = st.selectbox(
-            "Select School",
-            schools["school_id"].tolist()
-        )
+        school_id = st.selectbox("Select School", schools["school_id"].tolist())
+        row = schools[schools["school_id"] == school_id].iloc[0]
 
-        row = schools[
-            schools["school_id"] == school_id
-        ].iloc[0]
+        new_name = st.text_input("School Name", value=row["school_name"])
 
-        new_name = st.text_input(
-            "School Name",
-            value=row["school_name"]
-        )
-
-        if st.button(
-            "💾 Save School Changes"
-        ):
-
-            try:
-
-                execute_query("""
-                    UPDATE schools
-                    SET school_name = %s
-                    WHERE school_id = %s;
-                """, (
-                    new_name.strip(),
-                    school_id
-                ))
-
+        if st.button("💾 Save School Changes"):
+            ok, _ = safe_execute("""
+                UPDATE schools SET school_name = %s WHERE school_id = %s;
+            """, (new_name.strip(), school_id),
+                error_message="Could not update school.")
+            if ok:
+                log_action("UPDATE", "school", school_id,
+                           f"Renamed to {new_name}")
                 st.success("School updated.")
                 st.rerun()
 
-            except Exception as e:
-
-                st.error(
-                    f"Could not update school: {e}"
-                )
-
         st.markdown("### ➕ Add School")
+        school_to_add = st.text_input("New School Name")
 
-        school_to_add = st.text_input(
-            "New School Name"
-        )
-
-        if st.button(
-            "Add School",
-            type="primary"
-        ):
-
+        if st.button("Add School", type="primary"):
             if not school_to_add.strip():
-
                 st.error("Enter a school name.")
-
             else:
-
-                try:
-
-                    execute_query("""
-                        INSERT INTO schools
-                        (school_name)
-                        VALUES (%s);
-                    """, (
-                        school_to_add.strip(),
-                    ))
-
+                ok, _ = safe_execute("""
+                    INSERT INTO schools (school_name) VALUES (%s);
+                """, (school_to_add.strip(),),
+                    error_message="Could not add school.")
+                if ok:
                     st.success("School added.")
                     st.rerun()
 
-                except Exception as e:
-
-                    st.error(
-                        f"Could not add school: {e}"
-                    )
-
         st.markdown("### 🗑️ Delete School")
-
         confirm = st.checkbox(
             "I understand that deleting a school cannot be undone."
         )
 
-        if st.button(
-            "Delete School",
-            disabled=not confirm
-        ):
-
-            try:
-
-                execute_query("""
-                    DELETE FROM schools
-                    WHERE school_id = %s;
-                """, (school_id,))
-
+        if st.button("Delete School", disabled=not confirm):
+            ok, _ = safe_execute("""
+                DELETE FROM schools WHERE school_id = %s;
+            """, (school_id,),
+                error_message=(
+                    "This school cannot be deleted because it has "
+                    "existing business records."
+                ))
+            if ok:
+                log_action("DELETE", "school", school_id,
+                           f"Deleted school {row['school_name']}")
                 st.success("School deleted.")
                 st.rerun()
 
-            except Exception:
+    # ---------- AUDIT LOG ----------
+    with tabs[6]:
+        st.markdown("### 📋 Audit Log")
+        st.caption("Every create, edit, and delete performed in the system.")
 
-                st.error(
-                    "This school cannot be deleted because it has "
-                    "existing business records."
-                )
+        logs = fetch_dataframe("""
+            SELECT log_id, log_time, action, entity, entity_id, details
+            FROM audit_log
+            ORDER BY log_time DESC
+            LIMIT 500;
+        """)
+
+        if logs.empty:
+            st.info("No audit entries yet.")
+        else:
+            st.dataframe(logs, use_container_width=True, hide_index=True)
+
+    # ---------- DANGER ZONE ----------
+    with tabs[7]:
+        st.markdown("### ⚠️ Danger Zone")
+        st.warning(
+            "These actions delete data permanently. "
+            "Export anything you need first."
+        )
+
+        st.markdown("#### 🧹 Clear Transactional Data")
+        st.write(
+            "Deletes: sales, sale items, stock, tailor production, "
+            "financial transactions, and customers. "
+            "Keeps: schools, products, prices, investors."
+        )
+
+        confirm_clear = st.checkbox(
+            "I understand this deletes transactional data",
+            key="danger_confirm_clear"
+        )
+
+        if st.button("Clear Transactional Data",
+                     disabled=not confirm_clear):
+            ok, _ = safe_execute("""
+                TRUNCATE TABLE
+                    sale_items, sales, stock, tailor_production,
+                    financial_transactions, customers
+                RESTART IDENTITY CASCADE;
+            """, error_message="Could not clear transactional data.")
+            if ok:
+                log_action("RESET", "system", 0,
+                           "Cleared transactional data")
+                st.success("Transactional data cleared.")
+                st.rerun()
+
+        st.markdown("---")
+        st.markdown("#### 💣 Full Reset")
+        st.write(
+            "Wipes every table except schools, products, and investors. "
+            "Investors are reset to Gift and Ken only."
+        )
+
+        confirm_full = st.checkbox(
+            "I understand this is a full reset",
+            key="danger_confirm_full"
+        )
+
+        if st.button("Full Reset", disabled=not confirm_full):
+            ok, _ = safe_execute("""
+                TRUNCATE TABLE
+                    sale_items, sales, stock, tailor_production,
+                    financial_transactions, customers,
+                    school_product_prices, set_items, uniform_sets
+                RESTART IDENTITY CASCADE;
+            """, error_message="Could not complete full reset.")
+            if ok:
+                safe_execute("""
+                    DELETE FROM investors
+                    WHERE investor_name NOT IN ('Gift', 'Ken');
+                """)
+                log_action("RESET", "system", 0, "Full reset performed")
+                st.success("Full reset complete.")
+                st.rerun()
