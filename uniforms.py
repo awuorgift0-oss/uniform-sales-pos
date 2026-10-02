@@ -637,76 +637,6 @@ def setup_database():
             ADD COLUMN IF NOT EXISTS production_id INT;
         """)
 
-        # Add foreign keys safely.
-        cur.execute("""
-            DO $$
-            BEGIN
-
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conname =
-                    'financial_transactions_sale_id_fkey'
-                ) THEN
-
-                    ALTER TABLE financial_transactions
-                    ADD CONSTRAINT
-                    financial_transactions_sale_id_fkey
-                    FOREIGN KEY (sale_id)
-                    REFERENCES sales(sale_id)
-                    ON DELETE CASCADE;
-
-                END IF;
-
-            END $$;
-        """)
-
-        cur.execute("""
-            DO $$
-            BEGIN
-
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conname =
-                    'financial_transactions_stock_id_fkey'
-                ) THEN
-
-                    ALTER TABLE financial_transactions
-                    ADD CONSTRAINT
-                    financial_transactions_stock_id_fkey
-                    FOREIGN KEY (stock_id)
-                    REFERENCES stock(stock_id)
-                    ON DELETE CASCADE;
-
-                END IF;
-
-            END $$;
-        """)
-
-        cur.execute("""
-            DO $$
-            BEGIN
-
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conname =
-                    'financial_transactions_production_id_fkey'
-                ) THEN
-
-                    ALTER TABLE financial_transactions
-                    ADD CONSTRAINT
-                    financial_transactions_production_id_fkey
-                    FOREIGN KEY (production_id)
-                    REFERENCES tailor_production(production_id)
-                    ON DELETE CASCADE;
-
-                END IF;
-
-            END $$;
-        """)
-
         # =================================================
         # AUDIT LOG
         # =================================================
@@ -720,6 +650,149 @@ def setup_database():
                 entity_id INT,
                 details TEXT
             );
+        """)
+
+        # =================================================
+        # FK MIGRATION — ensure cascade behaviour
+        #
+        # Old databases may have these constraints without
+        # ON DELETE CASCADE. This block checks each one and
+        # replaces it if the cascade flag is missing.
+        #
+        # confdeltype:
+        #   'c' = CASCADE
+        #   'a' = NO ACTION
+        #   'r' = RESTRICT
+        #   'n' = SET NULL
+        #   'd' = SET DEFAULT
+        # =================================================
+
+        # ---- sale_items.sale_id -> sales ----
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'sale_items_sale_id_fkey'
+                      AND confdeltype <> 'c'
+                ) THEN
+                    ALTER TABLE sale_items
+                    DROP CONSTRAINT sale_items_sale_id_fkey;
+
+                    ALTER TABLE sale_items
+                    ADD CONSTRAINT sale_items_sale_id_fkey
+                    FOREIGN KEY (sale_id)
+                    REFERENCES sales(sale_id)
+                    ON DELETE CASCADE;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'sale_items_sale_id_fkey'
+                ) THEN
+                    ALTER TABLE sale_items
+                    ADD CONSTRAINT sale_items_sale_id_fkey
+                    FOREIGN KEY (sale_id)
+                    REFERENCES sales(sale_id)
+                    ON DELETE CASCADE;
+                END IF;
+            END $$;
+        """)
+
+        # ---- financial_transactions.sale_id -> sales ----
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'financial_transactions_sale_id_fkey'
+                      AND confdeltype <> 'c'
+                ) THEN
+                    ALTER TABLE financial_transactions
+                    DROP CONSTRAINT financial_transactions_sale_id_fkey;
+
+                    ALTER TABLE financial_transactions
+                    ADD CONSTRAINT financial_transactions_sale_id_fkey
+                    FOREIGN KEY (sale_id)
+                    REFERENCES sales(sale_id)
+                    ON DELETE CASCADE;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'financial_transactions_sale_id_fkey'
+                ) THEN
+                    ALTER TABLE financial_transactions
+                    ADD CONSTRAINT financial_transactions_sale_id_fkey
+                    FOREIGN KEY (sale_id)
+                    REFERENCES sales(sale_id)
+                    ON DELETE CASCADE;
+                END IF;
+            END $$;
+        """)
+
+        # ---- financial_transactions.stock_id -> stock ----
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'financial_transactions_stock_id_fkey'
+                      AND confdeltype <> 'c'
+                ) THEN
+                    ALTER TABLE financial_transactions
+                    DROP CONSTRAINT financial_transactions_stock_id_fkey;
+
+                    ALTER TABLE financial_transactions
+                    ADD CONSTRAINT financial_transactions_stock_id_fkey
+                    FOREIGN KEY (stock_id)
+                    REFERENCES stock(stock_id)
+                    ON DELETE CASCADE;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'financial_transactions_stock_id_fkey'
+                ) THEN
+                    ALTER TABLE financial_transactions
+                    ADD CONSTRAINT financial_transactions_stock_id_fkey
+                    FOREIGN KEY (stock_id)
+                    REFERENCES stock(stock_id)
+                    ON DELETE CASCADE;
+                END IF;
+            END $$;
+        """)
+
+        # ---- financial_transactions.production_id -> tailor_production ----
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'financial_transactions_production_id_fkey'
+                      AND confdeltype <> 'c'
+                ) THEN
+                    ALTER TABLE financial_transactions
+                    DROP CONSTRAINT financial_transactions_production_id_fkey;
+
+                    ALTER TABLE financial_transactions
+                    ADD CONSTRAINT financial_transactions_production_id_fkey
+                    FOREIGN KEY (production_id)
+                    REFERENCES tailor_production(production_id)
+                    ON DELETE CASCADE;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'financial_transactions_production_id_fkey'
+                ) THEN
+                    ALTER TABLE financial_transactions
+                    ADD CONSTRAINT financial_transactions_production_id_fkey
+                    FOREIGN KEY (production_id)
+                    REFERENCES tailor_production(production_id)
+                    ON DELETE CASCADE;
+                END IF;
+            END $$;
         """)
 
         # =================================================
@@ -1745,7 +1818,7 @@ elif page == "New Sale":
 
                         for item in st.session_state.cart:
 
-                            stock_check = cur.execute("""
+                            cur.execute("""
                                 SELECT
                                     COALESCE(
                                         SUM(quantity_brought),
@@ -1761,7 +1834,7 @@ elif page == "New Sale":
 
                             total_stock = cur.fetchone()[0]
 
-                            sold_check = cur.execute("""
+                            cur.execute("""
                                 SELECT
                                     COALESCE(
                                         SUM(si.quantity),
