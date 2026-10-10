@@ -10,6 +10,7 @@ import streamlit.components.v1 as components
 from contextlib import contextmanager
 import bcrypt
 import io
+import json
 
 # ============================================================
 # PAGE CONFIG
@@ -50,14 +51,8 @@ st.markdown("""
     }
     .login-box h1 { text-align: center; margin-bottom: 4px; }
     .login-box p { text-align: center; color: #666; margin-bottom: 24px; }
-    .void-tag {
-        background: #fdecea; color: #c0392b;
-        padding: 1px 8px; border-radius: 8px;
-        font-size: 11px; font-weight: bold;
-    }
     @media print {
-        [data-testid="stSidebar"],
-        [data-testid="stHeader"],
+        [data-testid="stSidebar"], [data-testid="stHeader"],
         .stButton, .stDownloadButton,
         [data-testid="stToolbar"], footer { display: none !important; }
         .stApp { background: white !important; }
@@ -217,6 +212,14 @@ def setup_database():
                 sale_item_id INT NOT NULL REFERENCES sale_items(sale_item_id),
                 quantity INT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS school_product_prices (
+                school_product_price_id SERIAL PRIMARY KEY,
+                school_id INT NOT NULL REFERENCES schools(school_id),
+                category_name VARCHAR(100) NOT NULL,
+                product_id INT NOT NULL REFERENCES products(product_id),
+                price NUMERIC(10,2) NOT NULL DEFAULT 0,
+                UNIQUE (school_id, category_name, product_id)
+            );
             CREATE TABLE IF NOT EXISTS stock (
                 stock_id SERIAL PRIMARY KEY,
                 school_id INT NOT NULL REFERENCES schools(school_id),
@@ -228,6 +231,17 @@ def setup_database():
                 unit_cost NUMERIC(10,2) DEFAULT 0,
                 adjustment_reason VARCHAR(50),
                 notes VARCHAR(255)
+            );
+            CREATE TABLE IF NOT EXISTS uniform_sets (
+                set_id SERIAL PRIMARY KEY,
+                school_id INT NOT NULL REFERENCES schools(school_id),
+                set_name VARCHAR(100) NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS set_items (
+                set_item_id SERIAL PRIMARY KEY,
+                set_id INT NOT NULL REFERENCES uniform_sets(set_id),
+                product_id INT NOT NULL REFERENCES products(product_id),
+                quantity INT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS investors (
                 investor_id SERIAL PRIMARY KEY,
@@ -291,7 +305,6 @@ def setup_database():
             );
         """)
 
-        # Safe column additions
         for stmt in [
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2) NOT NULL DEFAULT 0;",
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR(50);",
@@ -313,21 +326,18 @@ def setup_database():
         ]:
             cur.execute(stmt)
 
-        # Seed categories
         for cat in ["Uniform", "Sports", "Accessories", "Footwear", "Other"]:
             cur.execute(
-                "INSERT INTO product_categories (category_name) VALUES (%s) ON CONFLICT (category_name) DO NOTHING;",
+                "INSERT INTO product_categories (category_name) VALUES (%s) ON CONFLICT DO NOTHING;",
                 (cat,),
             )
 
-        # Seed schools
         for s in ["LOVING BLOOMS SCHOOL", "WARIDI UTAWALA SCHOOL"]:
             cur.execute(
-                "INSERT INTO schools (school_name) VALUES (%s) ON CONFLICT (school_name) DO NOTHING;",
+                "INSERT INTO schools (school_name) VALUES (%s) ON CONFLICT DO NOTHING;",
                 (s,),
             )
 
-        # Seed default admin user (only if no users exist)
         cur.execute("SELECT COUNT(*) FROM users;")
         if cur.fetchone()[0] == 0:
             default_hash = bcrypt.hashpw(b"admin2026", bcrypt.gensalt()).decode()
@@ -337,7 +347,6 @@ def setup_database():
                 (default_hash,),
             )
 
-        # Seed products
         products = [
             ("Skirt", 650), ("Blouse", 500), ("Socks", 200),
             ("Tracksuit Playgroup-PP2", 1600), ("Tracksuit G1-G6", 1800),
@@ -353,7 +362,6 @@ def setup_database():
                 (name, price),
             )
 
-        # Seed investors
         cur.execute(
             "INSERT INTO investors (investor_name, active) VALUES ('Gift', TRUE) "
             "ON CONFLICT (investor_name) DO UPDATE SET active = TRUE;"
@@ -416,7 +424,7 @@ def log_action(action, table_name=None, record_id=None, details=None):
 
 
 # ============================================================
-# AUTHENTICATION (bcrypt)
+# AUTHENTICATION
 # ============================================================
 def verify_password(plain, hashed):
     try:
@@ -440,8 +448,8 @@ def login_screen():
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("login_form"):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
+            username = st.text_input("Username", key="login_user")
+            password = st.text_input("Password", type="password", key="login_pw")
             submitted = st.form_submit_button("🔐 Sign In", use_container_width=True)
 
         if submitted:
@@ -466,9 +474,31 @@ def login_screen():
         st.caption("Default: **admin** / **admin2026** — change it after first login.")
 
 
+# ============================================================
+# SESSION GUARD (with self-heal)
+# ============================================================
 if "user" not in st.session_state or not st.session_state.user:
     login_screen()
     st.stop()
+
+# Self-heal: ensure user_id exists (old sessions may be missing it)
+if "user_id" not in st.session_state.user:
+    _u = query(
+        "SELECT user_id, username, role, full_name FROM users WHERE username = %s AND active = TRUE;",
+        (st.session_state.user.get("username", ""),),
+        fetch="one",
+    )
+    if _u:
+        st.session_state.user = {
+            "user_id": _u["user_id"],
+            "username": _u["username"],
+            "role": _u["role"],
+            "name": _u["full_name"],
+        }
+    else:
+        st.session_state.user = None
+        st.warning("Your session expired. Please sign in again.")
+        st.stop()
 
 
 # ============================================================
@@ -482,6 +512,7 @@ def init_state():
         "confirm_undo": None,
         "preview_sale": None,
         "scan_input": "",
+        "refund_sale": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -573,6 +604,8 @@ def find_customer_by_phone(phone):
     if not phone:
         return None
     digits = "".join(c for c in phone if c.isdigit())
+    if not digits:
+        return None
     return query(
         """SELECT * FROM customers
            WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') ILIKE %s
@@ -583,7 +616,7 @@ def find_customer_by_phone(phone):
 
 
 def confirm_delete(label, key, summary="This cannot be undone.", cascade_options=None,
-                   cascade_default=True, confirm_text="Delete"):
+                   cascade_default=True):
     state_key = f"cd_{key}"
     if state_key not in st.session_state:
         st.session_state[state_key] = False
@@ -620,8 +653,7 @@ def confirm_delete(label, key, summary="This cannot be undone.", cascade_options
     return False
 
 
-def build_receipt_html(r, thermal=False):
-    """Generate receipt HTML. thermal=True → 58mm layout."""
+def build_receipt_html(r):
     item_rows = ""
     for it in r["items"]:
         is_paid = it.get("paid", True)
@@ -645,14 +677,13 @@ def build_receipt_html(r, thermal=False):
         </div>
         """
 
-    payments = r.get("payments") or [{"method": r["payment_method"], "amount": r["total"]}]
+    payments = r.get("payments") or [{"method": r.get("payment_method", "Cash"),
+                                       "amount": r["total"]}]
     payment_rows = "".join(
         f'<div class="rc-meta-row"><span>{p["method"]}</span>'
         f'<span>KES {float(p["amount"]):,.0f}</span></div>'
         for p in payments
     )
-
-    width = "220px" if thermal else "300px"
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Receipt #{r['sale_id']:06d}</title>
@@ -660,7 +691,7 @@ def build_receipt_html(r, thermal=False):
     * {{ box-sizing: border-box; }}
     html, body {{ margin: 0; padding: 0; font-family: 'Courier New', monospace;
                  background: #eef2f7; color: #000; }}
-    .rc {{ max-width: {width}; margin: 20px auto; background: #fff;
+    .rc {{ max-width: 300px; margin: 20px auto; background: #fff;
           border: 1px solid #ccc; padding: 14px 16px 18px; font-size: 12px; line-height: 1.4; }}
     .rc-header {{ text-align: center; padding-bottom: 8px; }}
     .rc-title {{ font-size: 15px; font-weight: bold; letter-spacing: 2px; margin: 0; }}
@@ -755,6 +786,7 @@ with st.sidebar:
         st.session_state.user = None
         st.session_state.cart = []
         st.session_state.last_receipt = None
+        st.session_state.preview_sale = None
         st.rerun()
 
 
@@ -775,12 +807,8 @@ def page_pos():
     col_left, col_right = st.columns([2, 1])
 
     with col_left:
-        # ============================================================
-        # SCAN / QUICK ADD
-        # ============================================================
         st.subheader("⚡ Quick Add")
 
-        # Barcode scan
         scan_cols = st.columns([3, 1])
         with scan_cols[0]:
             scan = st.text_input(
@@ -801,7 +829,7 @@ def page_pos():
                 fetch="one",
             )
             if matched:
-                school_id = schools[0]["school_id"]  # default to first school
+                school_id = schools[0]["school_id"]
                 price = get_school_price(school_id, matched["product_id"], matched["price"])
                 found = False
                 for item in st.session_state.cart:
@@ -828,7 +856,6 @@ def page_pos():
             else:
                 st.warning(f"No product with SKU '{scan}'")
 
-        # Top 8 sellers as quick buttons
         top_sellers = query(
             """SELECT p.product_id, p.product_name, p.price,
                       SUM(si.quantity) AS sold_qty
@@ -876,7 +903,6 @@ def page_pos():
         st.markdown("---")
         st.subheader("Add Items")
 
-        # Filters
         fcol1, fcol2 = st.columns(2)
         with fcol1:
             cat_options = {c["category_name"]: c["category_id"] for c in categories}
@@ -980,7 +1006,6 @@ def page_pos():
             with bcol2:
                 if st.button("⏸ Hold Sale", use_container_width=True):
                     label = f"Hold {datetime.now().strftime('%H:%M')}"
-                    import json
                     execute(
                         """INSERT INTO held_sales (label, cart_json, held_by)
                            VALUES (%s, %s, %s);""",
@@ -990,7 +1015,6 @@ def page_pos():
                     st.success("Sale held. Retrieve it from below.")
                     st.rerun()
 
-        # Held sales
         held = query("SELECT * FROM held_sales ORDER BY held_at DESC LIMIT 10;")
         if held:
             with st.expander(f"⏸ Held Sales ({len(held)})"):
@@ -998,7 +1022,6 @@ def page_pos():
                     hc = st.columns([3, 1, 1])
                     hc[0].write(f"**{h['label']}** — {h['held_at'].strftime('%H:%M')}")
                     if hc[1].button("Retrieve", key=f"ret_{h['held_id']}"):
-                        import json
                         st.session_state.cart = json.loads(h["cart_json"])
                         execute("DELETE FROM held_sales WHERE held_id = %s;", (h["held_id"],))
                         st.rerun()
@@ -1006,15 +1029,11 @@ def page_pos():
                         execute("DELETE FROM held_sales WHERE held_id = %s;", (h["held_id"],))
                         st.rerun()
 
-    # ============================================================
-    # CHECKOUT
-    # ============================================================
     with col_right:
         st.subheader("Checkout")
         total = cart_total()
         st.metric("Total", f"KES {total:,.0f}")
 
-        # Customer lookup
         customer_phone = st.text_input("Phone (for lookup)", value="", key="pos_phone")
         existing_customer = find_customer_by_phone(customer_phone) if customer_phone else None
 
@@ -1026,7 +1045,6 @@ def page_pos():
 
         customer_name = st.text_input("Customer Name", value=default_name)
 
-        # Split payments
         st.markdown("**Payment Breakdown**")
         payment_methods = ["Cash", "M-Pesa", "Card", "Bank Transfer"]
         n_pay = st.radio(
@@ -1059,7 +1077,6 @@ def page_pos():
             payments.append({"method": method, "amount": amt})
             remaining -= amt
 
-        # Recompute actual remaining
         entered_total = sum(p["amount"] for p in payments)
         diff = entered_total - total
 
@@ -1070,7 +1087,6 @@ def page_pos():
         else:
             st.warning(f"⚠️ Short by KES {abs(diff):,.0f}")
 
-        # Combined payment status
         if abs(diff) < 0.01:
             payment_status = "Paid"
         elif entered_total > 0:
@@ -1085,7 +1101,6 @@ def page_pos():
         )
         year_input = st.number_input("Year", value=year, min_value=2020, max_value=2100)
 
-        # ---- PREVIEW BUTTON ----
         if st.button("👁 Review Sale", type="primary", use_container_width=True):
             if not st.session_state.cart:
                 st.error("Cart is empty.")
@@ -1101,22 +1116,23 @@ def page_pos():
                     "payment_status": payment_status,
                     "term": term_input,
                     "year": int(year_input),
+                    "existing_customer_id": existing_customer["customer_id"] if existing_customer else None,
                 }
                 st.rerun()
 
-        # ---- PREVIEW / CONFIRM ----
         if st.session_state.preview_sale:
             p = st.session_state.preview_sale
             st.markdown("---")
             st.warning("⚠️ **Review before saving**")
             st.write(f"**Customer:** {p['customer_name'] or 'Walk-in'}")
-            st.write(f"**Items:**")
+            st.write("**Items:**")
             for it in p["cart"]:
                 st.write(f"- {it['quantity']} × {it['product_name']} @ KES {it['unit_price']:,.0f}")
             st.write(f"**Total:** KES {p['total']:,.0f}")
-            st.write(f"**Payments:** " + ", ".join(
-                f"{pay['method']} KES {pay['amount']:,.0f}" for pay in p["payments"]
-            ))
+            if p["payments"]:
+                st.write("**Payments:** " + ", ".join(
+                    f"{pay['method']} KES {pay['amount']:,.0f}" for pay in p["payments"]
+                ))
             st.write(f"**Term:** {p['term']} · {p['year']}")
 
             cc1, cc2 = st.columns(2)
@@ -1124,18 +1140,15 @@ def page_pos():
                 if st.button("✅ Confirm & Save", type="primary",
                              use_container_width=True, key="confirm_sale"):
                     try:
-                        customer_id = None
-                        if p["customer_name"].strip() or p["customer_phone"].strip():
-                            if existing_customer and existing_customer["customer_name"] == p["customer_name"]:
-                                customer_id = existing_customer["customer_id"]
-                            else:
-                                row = execute_returning(
-                                    """INSERT INTO customers (customer_name, phone)
-                                       VALUES (%s, %s) RETURNING customer_id;""",
-                                    (p["customer_name"].strip() or "Walk-in",
-                                     p["customer_phone"].strip() or None),
-                                )
-                                customer_id = row["customer_id"]
+                        customer_id = p.get("existing_customer_id")
+                        if not customer_id and (p["customer_name"].strip() or p["customer_phone"].strip()):
+                            row = execute_returning(
+                                """INSERT INTO customers (customer_name, phone)
+                                   VALUES (%s, %s) RETURNING customer_id;""",
+                                (p["customer_name"].strip() or "Walk-in",
+                                 p["customer_phone"].strip() or None),
+                            )
+                            customer_id = row["customer_id"]
 
                         sale_row = execute_returning(
                             """INSERT INTO sales
@@ -1195,7 +1208,6 @@ def page_pos():
                     st.session_state.preview_sale = None
                     st.rerun()
 
-        # ---- RECEIPT ----
         if st.session_state.last_receipt:
             r = st.session_state.last_receipt
             st.markdown("---")
@@ -1268,7 +1280,6 @@ def page_pending():
         st.write("")
         show_completed = st.checkbox("Show delivered today", value=False)
 
-    # Metrics
     pending_count = query(
         "SELECT COUNT(*) AS c FROM sale_items WHERE paid = TRUE AND issued = FALSE;",
         fetch="one",
@@ -1450,19 +1461,19 @@ def page_stock():
         c1, c2 = st.columns(2)
         reason = c1.selectbox("Reason", ["Damaged", "Lost", "Stocktake correction", "Transfer out", "Other"])
         adj_qty = c2.number_input("Quantity to REMOVE", min_value=1, value=1, step=1)
-
         notes = st.text_input("Notes (optional)")
 
         if st.button("📉 Apply Adjustment"):
             if adj_qty > current:
                 st.error(f"Cannot remove more than available ({current}).")
             else:
+                term_now, year_now = current_term_year()
                 execute(
                     """INSERT INTO stock (school_id, product_id, quantity_brought,
                                          term, year, unit_cost, adjustment_reason, notes)
                        VALUES (%s, %s, %s, %s, %s, 0, %s, %s);""",
                     (school_id, product["product_id"], -adj_qty,
-                     *current_term_year(), reason, notes or None),
+                     term_now, year_now, reason, notes or None),
                 )
                 log_action("STOCK_ADJUST", "stock", None,
                            f"-{adj_qty} × {product_name} ({reason})")
@@ -1889,7 +1900,6 @@ def page_reports():
                     st.success("Sale voided.")
                     st.rerun()
 
-            # Refund dialog
             if st.session_state.get("refund_sale") == rid:
                 st.markdown("---")
                 st.subheader(f"↩ Refund Sale #{rid}")
@@ -1975,7 +1985,7 @@ def page_reports():
 
 
 # ============================================================
-# PAGE: CLOSE DAY (Z-Report)
+# PAGE: CLOSE DAY
 # ============================================================
 def page_close_day():
     st.title("📅 Close Day (Z-Report)")
@@ -1983,14 +1993,10 @@ def page_close_day():
 
     close_date = st.date_input("Date to close", value=datetime.now().date())
 
-    # Aggregate
     sales_data = query(
-        """SELECT COALESCE(SUM(total_amount),0) AS total,
-                  COUNT(*) AS num_sales
-           FROM sales
-           WHERE sale_date::date = %s AND voided = FALSE;""",
-        (close_date,),
-        fetch="one",
+        """SELECT COALESCE(SUM(total_amount),0) AS total, COUNT(*) AS num_sales
+           FROM sales WHERE sale_date::date = %s AND voided = FALSE;""",
+        (close_date,), fetch="one",
     )
     total_sales = float(sales_data["total"] if sales_data else 0)
     num_sales = int(sales_data["num_sales"] if sales_data else 0)
@@ -2006,12 +2012,10 @@ def page_close_day():
 
     refunds_data = query(
         "SELECT COALESCE(SUM(amount),0) AS total FROM refunds WHERE refund_date::date = %s;",
-        (close_date,),
-        fetch="one",
+        (close_date,), fetch="one",
     )
     total_refunds = float(refunds_data["total"] if refunds_data else 0)
 
-    # Cash = cash payments - refunds (assuming refunds given in cash)
     cash_in = 0
     payment_rows = []
     for p in payments_breakdown:
@@ -2040,9 +2044,7 @@ def page_close_day():
     st.subheader("Cash Reconciliation")
     counted_cash = st.number_input(
         "Actual cash counted in drawer (KES)",
-        min_value=0.0,
-        value=float(expected_cash),
-        step=10.0,
+        min_value=0.0, value=float(expected_cash), step=10.0,
     )
     variance = counted_cash - expected_cash
 
@@ -2055,7 +2057,6 @@ def page_close_day():
 
     notes = st.text_area("Notes / reason for variance")
 
-    # Check if already closed
     existing = query("SELECT * FROM daily_closings WHERE closing_date = %s;",
                      (close_date,), fetch="one")
     if existing:
@@ -2093,7 +2094,6 @@ def page_close_day():
         except Exception as e:
             st.error(f"Failed: {e}")
 
-    # Past closings
     st.markdown("---")
     st.subheader("Past Closings")
     past = query(
@@ -2227,8 +2227,13 @@ def page_users():
     st.title("👥 Users")
     st.caption("Create, edit, deactivate users. Passwords are hashed with bcrypt.")
 
-    users = query("SELECT user_id, username, full_name, role, active FROM users ORDER BY username;")
+    users = query(
+        "SELECT user_id, username, full_name, role, active FROM users ORDER BY username;"
+    )
 
+    # ============================================================
+    # EXISTING USERS
+    # ============================================================
     st.subheader("Existing Users")
     for u in users:
         cols = st.columns([2, 3, 2, 1, 1])
@@ -2239,53 +2244,129 @@ def page_users():
         with cols[4]:
             if u["username"] != USER["username"]:
                 if st.button("🗑", key=f"deluser_{u['user_id']}"):
-                    execute("UPDATE users SET active = FALSE WHERE user_id = %s;", (u["user_id"],))
+                    execute(
+                        "UPDATE users SET active = FALSE WHERE user_id = %s;",
+                        (u["user_id"],),
+                    )
                     log_action("USER_DEACTIVATE", "users", u["user_id"], "Deactivated")
                     st.rerun()
 
+    # ============================================================
+    # ADD USER
+    # ============================================================
     st.markdown("---")
     st.subheader("Add User")
-    with st.form("add_user", clear_on_submit=True):
+    with st.form("add_user_form", clear_on_submit=True):
         c1, c2 = st.columns(2)
-        username = c1.text_input("Username")
-        full_name = c2.text_input("Full Name")
+        new_username = c1.text_input("Username", key="new_user_name")
+        new_full_name = c2.text_input("Full Name", key="new_user_fullname")
         c3, c4 = st.columns(2)
-        password = c3.text_input("Password", type="password")
-        role = c4.selectbox("Role", ["cashier", "manager", "admin"])
-        if st.form_submit_button("💾 Create"):
-            if not username or not password:
-                st.error("Username and password required.")
+        new_password = c3.text_input("Password", type="password", key="new_user_pw")
+        new_role = c4.selectbox("Role", ["cashier", "manager", "admin"], key="new_user_role")
+        create_submitted = st.form_submit_button("💾 Create")
+
+    if create_submitted:
+        if not new_username.strip() or not new_password:
+            st.error("Username and password required.")
+        elif len(new_password) < 6:
+            st.error("Password must be at least 6 characters.")
+        else:
+            existing = query(
+                "SELECT user_id FROM users WHERE username = %s;",
+                (new_username.strip().lower(),),
+                fetch="one",
+            )
+            if existing:
+                st.error("Username already exists.")
             else:
                 execute(
-                    """INSERT INTO users (username, password_hash, full_name, role)
-                       VALUES (%s, %s, %s, %s) ON CONFLICT (username) DO NOTHING;""",
-                    (username.strip().lower(), hash_password(password),
-                     full_name.strip() or username, role),
+                    """INSERT INTO users (username, password_hash, full_name, role, active)
+                       VALUES (%s, %s, %s, %s, TRUE);""",
+                    (
+                        new_username.strip().lower(),
+                        hash_password(new_password),
+                        new_full_name.strip() or new_username.strip(),
+                        new_role,
+                    ),
                 )
-                log_action("USER_CREATE", "users", None, f"Created {username} ({role})")
-                st.success("User created.")
+                log_action("USER_CREATE", "users", None,
+                           f"Created {new_username} ({new_role})")
+                st.success(f"User **{new_username}** created.")
                 st.rerun()
 
+    # ============================================================
+    # CHANGE MY PASSWORD
+    # ============================================================
     st.markdown("---")
     st.subheader("Change My Password")
-    with st.form("change_pw", clear_on_submit=True):
-        old_pw = st.text_input("Current password", type="password")
-        new_pw = st.text_input("New password", type="password")
-        confirm = st.text_input("Confirm new password", type="password")
-        if st.form_submit_button("🔐 Change"):
-            row = query("SELECT password_hash FROM users WHERE user_id = %s;",
-                        (USER["user_id"],), fetch="one")
-            if not row or not verify_password(old_pw, row["password_hash"]):
-                st.error("Current password wrong.")
-            elif new_pw != confirm:
-                st.error("New passwords don't match.")
-            elif len(new_pw) < 6:
-                st.error("Password must be at least 6 characters.")
+
+    with st.form("change_password_form", clear_on_submit=True):
+        current_password = st.text_input("Current password", type="password", key="chg_current")
+        new_password_1 = st.text_input("New password", type="password", key="chg_new1")
+        new_password_2 = st.text_input("Confirm new password", type="password", key="chg_new2")
+        change_submitted = st.form_submit_button("🔐 Change Password")
+
+    if change_submitted:
+        if not current_password or not new_password_1 or not new_password_2:
+            st.error("All three fields are required.")
+        elif new_password_1 != new_password_2:
+            st.error("New passwords do not match.")
+        elif len(new_password_1) < 6:
+            st.error("New password must be at least 6 characters.")
+        else:
+            db_row = query(
+                "SELECT password_hash FROM users WHERE user_id = %s;",
+                (USER["user_id"],),
+                fetch="one",
+            )
+            if not db_row:
+                st.error("Your user account was not found. Please log out and back in.")
+            elif not verify_password(current_password, db_row["password_hash"]):
+                st.error("Current password is incorrect.")
+                log_action("PASSWORD_CHANGE_FAILED", "users", USER["user_id"],
+                           "Wrong current password")
             else:
-                execute("UPDATE users SET password_hash = %s WHERE user_id = %s;",
-                        (hash_password(new_pw), USER["user_id"]))
-                log_action("PASSWORD_CHANGE", "users", USER["user_id"], "Password changed")
-                st.success("Password changed.")
+                execute(
+                    "UPDATE users SET password_hash = %s WHERE user_id = %s;",
+                    (hash_password(new_password_1), USER["user_id"]),
+                )
+                log_action("PASSWORD_CHANGE", "users", USER["user_id"],
+                           "Password changed")
+                st.success("✅ Password changed successfully. Use it next time you log in.")
+
+    # ============================================================
+    # RESET ANOTHER USER'S PASSWORD (admin only)
+    # ============================================================
+    if IS_ADMIN:
+        st.markdown("---")
+        st.subheader("Reset Another User's Password")
+        st.caption("Use this if a cashier or manager forgets their password.")
+
+        other_users = [u for u in users if u["username"] != USER["username"] and u["active"]]
+
+        if not other_users:
+            st.info("No other active users to reset.")
+        else:
+            user_options = {f"{u['username']} ({u['full_name']})": u["user_id"]
+                            for u in other_users}
+
+            with st.form("admin_reset_form", clear_on_submit=True):
+                target_label = st.selectbox("User", list(user_options.keys()))
+                admin_new_pw = st.text_input("New password", type="password", key="admin_reset_pw")
+                admin_reset_submitted = st.form_submit_button("🔐 Reset")
+
+            if admin_reset_submitted:
+                if len(admin_new_pw) < 6:
+                    st.error("Password must be at least 6 characters.")
+                else:
+                    target_id = user_options[target_label]
+                    execute(
+                        "UPDATE users SET password_hash = %s WHERE user_id = %s;",
+                        (hash_password(admin_new_pw), target_id),
+                    )
+                    log_action("PASSWORD_RESET_BY_ADMIN", "users", target_id,
+                               f"Reset password for {target_label}")
+                    st.success(f"Password reset for **{target_label}**.")
 
 
 # ============================================================
