@@ -1,5 +1,5 @@
 # ============================================================
-# UNIFORM SALES POS — PROFESSIONAL EDITION
+# UNIFORM SALES POS — PROFESSIONAL EDITION (PERFORMANCE FIX)
 # ============================================================
 import streamlit as st
 import psycopg2
@@ -23,16 +23,11 @@ st.set_page_config(
 )
 
 # ============================================================
-# DESIGN SYSTEM — PROFESSIONAL
+# DESIGN SYSTEM
 # ============================================================
 st.markdown("""
 <style>
-    /* ---------- Base ---------- */
-    .stApp {
-        background-color: #f8fafc;
-    }
-
-    /* ---------- Typography ---------- */
+    .stApp { background-color: #f8fafc; }
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
                      Roboto, sans-serif;
@@ -43,7 +38,6 @@ st.markdown("""
     h3 { font-size: 16px; font-weight: 600; color: #334155; margin-top: 12px; margin-bottom: 6px; }
     p  { color: #475569; }
 
-    /* ---------- Sidebar ---------- */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
         border-right: 1px solid #334155;
@@ -73,20 +67,7 @@ st.markdown("""
         border-color: #334155;
         margin: 12px 0;
     }
-    [data-testid="stSidebar"] .stRadio > div {
-        gap: 2px;
-    }
-    [data-testid="stSidebar"] .stRadio label {
-        padding: 6px 8px;
-        border-radius: 6px;
-        transition: background 0.15s;
-        font-size: 14px;
-    }
-    [data-testid="stSidebar"] .stRadio label:hover {
-        background: #334155;
-    }
 
-    /* ---------- Buttons ---------- */
     .stButton > button {
         background-color: #f1f5f9;
         color: #0f172a;
@@ -117,7 +98,6 @@ st.markdown("""
         border: 1px solid #e2e8f0;
     }
 
-    /* ---------- Metrics ---------- */
     div[data-testid="stMetric"] {
         background-color: #ffffff;
         border: 1px solid #e2e8f0;
@@ -138,7 +118,6 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* ---------- Cards ---------- */
     .card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -156,7 +135,6 @@ st.markdown("""
         margin: 0 0 12px 0;
     }
 
-    /* ---------- KPI Grid ---------- */
     .kpi-card {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -188,7 +166,6 @@ st.markdown("""
     .kpi-sub.pos { color: #059669; }
     .kpi-sub.neg { color: #dc2626; }
 
-    /* ---------- Alerts ---------- */
     .alert-item {
         display: flex;
         align-items: center;
@@ -212,7 +189,6 @@ st.markdown("""
         color: #14532d;
     }
 
-    /* ---------- Login ---------- */
     .login-box {
         max-width: 380px;
         margin: 80px auto;
@@ -234,7 +210,6 @@ st.markdown("""
         margin-bottom: 24px;
     }
 
-    /* ---------- Tabs ---------- */
     .stTabs [data-baseweb="tab-list"] {
         gap: 4px;
         border-bottom: 1px solid #e2e8f0;
@@ -251,14 +226,12 @@ st.markdown("""
         border-bottom: 2px solid #1e293b !important;
     }
 
-    /* ---------- Divider ---------- */
     hr {
         border: none;
         border-top: 1px solid #e2e8f0;
         margin: 16px 0;
     }
 
-    /* ---------- Mobile ---------- */
     @media (max-width: 768px) {
         .stButton > button { padding: 10px 14px !important; font-size: 15px !important; min-height: 44px !important; }
         input[type="number"], input[type="text"], input[type="password"] { font-size: 16px !important; }
@@ -266,7 +239,6 @@ st.markdown("""
         .kpi-value { font-size: 22px !important; }
     }
 
-    /* ---------- Print ---------- */
     @media print {
         [data-testid="stSidebar"], [data-testid="stHeader"],
         .stButton, .stDownloadButton, [data-testid="stToolbar"],
@@ -343,19 +315,19 @@ def execute_returning(sql, params=None):
 
 
 # ============================================================
-# CACHED MASTER DATA (fast page switches)
+# CACHED MASTER DATA
 # ============================================================
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_schools():
     return query("SELECT school_id, school_name FROM schools ORDER BY school_name;")
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_categories():
     return query("SELECT category_id, category_name FROM product_categories ORDER BY category_name;")
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_products(category_id=None):
     sql = """SELECT p.product_id, p.product_name, p.sku, p.price, p.cost_price,
                     p.category_id, c.category_name
@@ -370,16 +342,71 @@ def get_products(category_id=None):
     return query(sql, tuple(params))
 
 
+@st.cache_data(ttl=30, show_spinner=False)
+def get_all_stock_for_school(school_id):
+    """Returns {product_id: available_qty} for all products at a school in ONE query."""
+    rows = query(
+        """
+        SELECT p.product_id,
+               COALESCE((
+                   SELECT SUM(quantity_brought) FROM stock st
+                   WHERE st.school_id = %s AND st.product_id = p.product_id
+               ), 0)
+               -
+               COALESCE((
+                   SELECT SUM(si.quantity) FROM sale_items si
+                   JOIN sales s ON s.sale_id = si.sale_id
+                   WHERE s.school_id = %s AND si.product_id = p.product_id
+                     AND s.voided = FALSE
+               ), 0)
+               +
+               COALESCE((
+                   SELECT SUM(ri.quantity) FROM refund_items ri
+                   JOIN refunds r ON r.refund_id = ri.refund_id
+                   JOIN sale_items si2 ON si2.sale_item_id = ri.sale_item_id
+                   JOIN sales s2 ON s2.sale_id = si2.sale_id
+                   WHERE s2.school_id = %s AND si2.product_id = p.product_id
+               ), 0) AS available
+        FROM products p
+        WHERE p.active = TRUE;
+        """,
+        (school_id, school_id, school_id),
+    )
+    return {int(r["product_id"]): int(r["available"] or 0) for r in rows}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_school_prices_map(school_id):
+    """Returns {product_id: price} for all school-specific overrides."""
+    rows = query(
+        "SELECT product_id, price FROM school_product_prices WHERE school_id = %s;",
+        (school_id,),
+    )
+    return {int(r["product_id"]): float(r["price"]) for r in rows}
+
+
 def clear_caches():
-    get_schools.clear()
-    get_categories.clear()
-    get_products.clear()
+    try:
+        get_schools.clear()
+        get_categories.clear()
+        get_products.clear()
+        get_all_stock_for_school.clear()
+        get_school_prices_map.clear()
+    except Exception:
+        pass
+
+
+def invalidate_stock_cache():
+    try:
+        get_all_stock_for_school.clear()
+    except Exception:
+        pass
 
 
 # ============================================================
 # SETUP DATABASE
 # ============================================================
-@st.cache_resource(show_spinner="Setting up database...")
+@st.cache_resource(show_spinner=False)
 def setup_database():
     conn = get_connection()
     if conn is None:
@@ -706,8 +733,7 @@ def login_screen():
         if submitted:
             row = query(
                 "SELECT * FROM users WHERE username = %s AND active = TRUE;",
-                (username.strip().lower(),),
-                fetch="one",
+                (username.strip().lower(),), fetch="one",
             )
             if row and verify_password(password, row["password_hash"]):
                 st.session_state.user = {
@@ -733,8 +759,7 @@ if "user" not in st.session_state or not st.session_state.user:
 if "user_id" not in st.session_state.user:
     _u = query(
         "SELECT user_id, username, role, full_name FROM users WHERE username = %s AND active = TRUE;",
-        (st.session_state.user.get("username", ""),),
-        fetch="one",
+        (st.session_state.user.get("username", ""),), fetch="one",
     )
     if _u:
         st.session_state.user = {
@@ -786,38 +811,6 @@ def current_term_year():
     else:
         term = "Term 3"
     return term, now.year
-
-
-def get_school_price(school_id, product_id, default_price):
-    row = query(
-        """SELECT price FROM school_product_prices
-           WHERE school_id = %s AND product_id = %s
-           ORDER BY category_name LIMIT 1;""",
-        (school_id, product_id), fetch="one",
-    )
-    return float(row["price"]) if row else float(default_price)
-
-
-def get_stock_available(school_id, product_id):
-    brought = query(
-        "SELECT COALESCE(SUM(quantity_brought),0) AS q FROM stock WHERE school_id=%s AND product_id=%s;",
-        (school_id, product_id), fetch="one",
-    )
-    sold = query(
-        """SELECT COALESCE(SUM(si.quantity),0) AS q FROM sale_items si
-           JOIN sales s ON s.sale_id = si.sale_id
-           WHERE s.school_id=%s AND si.product_id=%s AND s.voided = FALSE;""",
-        (school_id, product_id), fetch="one",
-    )
-    refunded = query(
-        """SELECT COALESCE(SUM(ri.quantity),0) AS q FROM refund_items ri
-           JOIN refunds r ON r.refund_id = ri.refund_id
-           JOIN sale_items si ON si.sale_item_id = ri.sale_item_id
-           JOIN sales s ON s.sale_id = si.sale_id
-           WHERE s.school_id=%s AND si.product_id=%s;""",
-        (school_id, product_id), fetch="one",
-    )
-    return int(brought["q"] or 0) - int(sold["q"] or 0) + int(refunded["q"] or 0)
 
 
 def cart_total():
@@ -994,11 +987,8 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # Grouped navigation
     nav_groups = {
-        "Overview": [
-            ("📊 Dashboard", "📊 Dashboard"),
-        ],
+        "Overview": [("📊 Dashboard", "📊 Dashboard")],
         "Sales": [
             ("🛒 Point of Sale", "🛒 Point of Sale"),
             ("📋 Pending Pickup", "📋 Pending Pickup"),
@@ -1009,9 +999,7 @@ with st.sidebar:
             ("👕 Products", "👕 Products & Prices"),
             ("🏫 Schools", "🏫 Schools"),
         ],
-        "Operations": [
-            ("✂️ Tailor Production", "✂️ Tailor Production"),
-        ],
+        "Operations": [("✂️ Tailor Production", "✂️ Tailor Production")],
         "Finance": [
             ("💰 Financials", "💰 Financials"),
             ("📈 Reports", "📊 Reports"),
@@ -1020,28 +1008,23 @@ with st.sidebar:
         "System": [],
     }
 
-    # Role-based system section
     if IS_ADMIN:
         nav_groups["System"] = [
             ("📜 Audit Log", "📜 Audit Log"),
             ("👥 Users", "👥 Users"),
         ]
 
-    # Filter out empty groups
     nav_groups = {k: v for k, v in nav_groups.items() if v}
 
-    # Build flat list of pages this user can access
     available_pages = []
     for group_name, items in nav_groups.items():
         for label, page_key in items:
             available_pages.append((group_name, label, page_key))
 
-    # Ensure current page is valid
     valid_page_keys = [p[2] for p in available_pages]
     if st.session_state.page not in valid_page_keys:
         st.session_state.page = "📊 Dashboard"
 
-    # Render grouped nav
     for group_name, items in nav_groups.items():
         st.markdown(
             f'<div style="font-size: 10px; font-weight: 600; color: #64748b;'
@@ -1050,22 +1033,12 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
         for label, page_key in items:
-            is_active = st.session_state.page == page_key
-            button_style = (
-                "background-color:#334155;color:#f1f5f9;"
-                if is_active else ""
-            )
-            if st.button(
-                label,
-                key=f"nav_{page_key}",
-                use_container_width=True,
-            ):
+            if st.button(label, key=f"nav_{page_key}", use_container_width=True):
                 st.session_state.page = page_key
                 st.rerun()
 
     st.markdown("---")
 
-    # User info at bottom
     st.markdown(f"""
     <div style="padding: 4px;">
         <div style="font-size: 13px; font-weight: 600; color: #f1f5f9;">
@@ -1094,7 +1067,6 @@ def page_dashboard():
     term, year = current_term_year()
     today_str = datetime.now().strftime("%A, %d %B %Y")
 
-    # Header
     st.markdown(f"""
     <div style="display: flex; justify-content: space-between; align-items: baseline;
                 margin-bottom: 24px;">
@@ -1110,9 +1082,6 @@ def page_dashboard():
     </div>
     """, unsafe_allow_html=True)
 
-    # ============================================================
-    # TODAY'S KPIs
-    # ============================================================
     today = datetime.now().date()
     yesterday = today - timedelta(days=1)
 
@@ -1131,7 +1100,6 @@ def page_dashboard():
     )
     yest_total = float(yest_sales["total"] if yest_sales else 0)
 
-    # % change vs yesterday
     if yest_total > 0:
         pct_change = ((today_total - yest_total) / yest_total) * 100
         change_class = "pos" if pct_change >= 0 else "neg"
@@ -1147,13 +1115,11 @@ def page_dashboard():
     pending_count = int(pending_pickups["c"] if pending_pickups else 0)
 
     pending_sales_qty = query(
-        """SELECT COUNT(DISTINCT sale_id) AS c FROM sale_items
-           WHERE paid = TRUE AND issued = FALSE;""",
+        "SELECT COUNT(DISTINCT sale_id) AS c FROM sale_items WHERE paid = TRUE AND issued = FALSE;",
         fetch="one",
     )
     pending_sales_count = int(pending_sales_qty["c"] if pending_sales_qty else 0)
 
-    # Expected cash — sum of cash payments today minus refunds today
     cash_today = query(
         """SELECT COALESCE(SUM(sp.amount),0) AS t
            FROM sale_payments sp
@@ -1177,7 +1143,6 @@ def page_dashboard():
         (today,), fetch="one",
     )
 
-    # KPI cards
     k1, k2, k3, k4 = st.columns(4)
     with k1:
         st.markdown(f"""
@@ -1215,9 +1180,6 @@ def page_dashboard():
 
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 
-    # ============================================================
-    # TRENDS + ALERTS
-    # ============================================================
     col_trend, col_alerts = st.columns([2, 1])
 
     with col_trend:
@@ -1226,16 +1188,13 @@ def page_dashboard():
                     unsafe_allow_html=True)
 
         trend = query(
-            """SELECT sale_date::date AS day,
-                      COALESCE(SUM(total_amount),0) AS total
+            """SELECT sale_date::date AS day, COALESCE(SUM(total_amount),0) AS total
                FROM sales
                WHERE sale_date::date >= %s AND voided = FALSE
-               GROUP BY day
-               ORDER BY day;""",
+               GROUP BY day ORDER BY day;""",
             (today - timedelta(days=6),),
         )
 
-        # Fill missing days with zero
         trend_map = {r["day"]: float(r["total"]) for r in trend}
         days = [today - timedelta(days=i) for i in range(6, -1, -1)]
         chart_data = pd.DataFrame({
@@ -1248,7 +1207,6 @@ def page_dashboard():
         else:
             st.info("No sales in the last 7 days.")
 
-        # Summary stats
         if trend:
             totals = [float(r["total"]) for r in trend]
             avg = sum(totals) / len(totals) if totals else 0
@@ -1264,7 +1222,6 @@ def page_dashboard():
 
         alerts_found = False
 
-        # Low stock: products with < 10 remaining for any school
         low_stock = query(
             """SELECT p.product_name, s.school_name,
                       COALESCE((SELECT SUM(st.quantity_brought) FROM stock st
@@ -1274,22 +1231,19 @@ def page_dashboard():
                                 JOIN sales sa ON sa.sale_id = si.sale_id
                                 WHERE sa.school_id = s.school_id AND si.product_id = p.product_id
                                   AND sa.voided = FALSE),0) AS remaining
-               FROM products p
-               CROSS JOIN schools s
+               FROM products p CROSS JOIN schools s
                WHERE p.active = TRUE
-               ORDER BY remaining ASC
-               LIMIT 5;"""
+               ORDER BY remaining ASC LIMIT 5;"""
         )
 
         low_items = [r for r in low_stock if int(r["remaining"]) < 10]
         if low_items:
             alerts_found = True
             st.markdown(
-                f'<div class="alert-item">⚠️ {len(low_items)} product(s) low on stock</div>',
+                f'<div class="alert-item">{len(low_items)} product(s) low on stock</div>',
                 unsafe_allow_html=True,
             )
 
-        # Aged pickups
         aged = query(
             """SELECT COUNT(*) AS c FROM sale_items si
                JOIN sales s ON s.sale_id = si.sale_id
@@ -1301,51 +1255,44 @@ def page_dashboard():
         if aged_count > 0:
             alerts_found = True
             st.markdown(
-                f'<div class="alert-item danger">🕐 {aged_count} item(s) pending pickup for over 7 days</div>',
+                f'<div class="alert-item danger">{aged_count} item(s) pending pickup for over 7 days</div>',
                 unsafe_allow_html=True,
             )
 
-        # Cash variance from last close
         last_close = query(
-            """SELECT variance, closing_date FROM daily_closings
-               ORDER BY closing_date DESC LIMIT 1;""",
+            "SELECT variance, closing_date FROM daily_closings ORDER BY closing_date DESC LIMIT 1;",
             fetch="one",
         )
         if last_close and abs(float(last_close["variance"])) > 1:
             alerts_found = True
             v = float(last_close["variance"])
             st.markdown(
-                f'<div class="alert-item danger">💰 Cash variance on '
+                f'<div class="alert-item danger">Cash variance on '
                 f'{last_close["closing_date"].strftime("%d %b")}: '
                 f'KES {v:+,.0f}</div>',
                 unsafe_allow_html=True,
             )
 
-        # Unpaid (credit) sales
         unpaid = query(
-            """SELECT COUNT(*) AS c FROM sale_items
-               WHERE paid = FALSE AND issued = TRUE;""",
+            "SELECT COUNT(*) AS c FROM sale_items WHERE paid = FALSE AND issued = TRUE;",
             fetch="one",
         )
         unpaid_count = int(unpaid["c"] if unpaid else 0)
         if unpaid_count > 0:
             alerts_found = True
             st.markdown(
-                f'<div class="alert-item">💸 {unpaid_count} item(s) issued but not paid</div>',
+                f'<div class="alert-item">{unpaid_count} item(s) issued but not paid</div>',
                 unsafe_allow_html=True,
             )
 
         if not alerts_found:
             st.markdown(
-                '<div class="alert-item ok">✓ All clear — no issues</div>',
+                '<div class="alert-item ok">All clear — no issues</div>',
                 unsafe_allow_html=True,
             )
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ============================================================
-    # TOP PRODUCTS + PAYMENT MIX
-    # ============================================================
     col_top, col_pay = st.columns([1, 1])
 
     with col_top:
@@ -1354,14 +1301,12 @@ def page_dashboard():
                     unsafe_allow_html=True)
 
         top_products = query(
-            """SELECT p.product_name, SUM(si.quantity) AS qty,
-                      SUM(si.line_total) AS revenue
+            """SELECT p.product_name, SUM(si.quantity) AS qty, SUM(si.line_total) AS revenue
                FROM sale_items si
                JOIN products p ON p.product_id = si.product_id
                JOIN sales s ON s.sale_id = si.sale_id
                WHERE s.sale_date::date >= %s AND s.voided = FALSE
-               GROUP BY p.product_name
-               ORDER BY qty DESC LIMIT 5;""",
+               GROUP BY p.product_name ORDER BY qty DESC LIMIT 5;""",
             (today - timedelta(days=6),),
         )
         if top_products:
@@ -1390,8 +1335,7 @@ def page_dashboard():
                FROM sale_payments sp
                JOIN sales s ON s.sale_id = sp.sale_id
                WHERE s.sale_date::date = %s AND s.voided = FALSE
-               GROUP BY sp.method
-               ORDER BY total DESC;""",
+               GROUP BY sp.method ORDER BY total DESC;""",
             (today,),
         )
         if pay_mix:
@@ -1418,9 +1362,6 @@ def page_dashboard():
             st.caption("No payments today yet.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ============================================================
-    # QUICK ACTIONS
-    # ============================================================
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">Quick Actions</div>', unsafe_allow_html=True)
 
@@ -1455,7 +1396,7 @@ def page_dashboard():
 
 
 # ============================================================
-# PAGE: POINT OF SALE
+# PAGE: POINT OF SALE — OPTIMIZED
 # ============================================================
 def page_pos():
     st.markdown("# Point of Sale")
@@ -1468,6 +1409,11 @@ def page_pos():
     if not schools or not products:
         st.warning("Schools or products missing. Please set them up first.")
         return
+
+    # Pre-fetch price overrides for the default school (cached)
+    default_school_id = schools[0]["school_id"]
+    default_school_name = schools[0]["school_name"]
+    price_overrides = get_school_prices_map(default_school_id)
 
     col_left, col_right = st.columns([2, 1])
 
@@ -1493,8 +1439,8 @@ def page_pos():
                 (scan.strip(),), fetch="one",
             )
             if matched:
-                school_id = schools[0]["school_id"]
-                price = get_school_price(school_id, matched["product_id"], matched["price"])
+                price = price_overrides.get(int(matched["product_id"]),
+                                            float(matched["price"]))
                 found = False
                 for item in st.session_state.cart:
                     if (item["product_id"] == matched["product_id"]
@@ -1505,8 +1451,8 @@ def page_pos():
                         break
                 if not found:
                     st.session_state.cart.append({
-                        "school_id": school_id,
-                        "school_name": schools[0]["school_name"],
+                        "school_id": default_school_id,
+                        "school_name": default_school_name,
                         "product_id": matched["product_id"],
                         "product_name": matched["product_name"],
                         "quantity": 1,
@@ -1540,8 +1486,8 @@ def page_pos():
                         key=f"quick_{prod['product_id']}",
                         use_container_width=True,
                     ):
-                        school_id = schools[0]["school_id"]
-                        price = get_school_price(school_id, prod["product_id"], prod["price"])
+                        price = price_overrides.get(int(prod["product_id"]),
+                                                    float(prod["price"]))
                         found = False
                         for item in st.session_state.cart:
                             if (item["product_id"] == prod["product_id"]
@@ -1552,8 +1498,8 @@ def page_pos():
                                 break
                         if not found:
                             st.session_state.cart.append({
-                                "school_id": school_id,
-                                "school_name": schools[0]["school_name"],
+                                "school_id": default_school_id,
+                                "school_name": default_school_name,
                                 "product_id": prod["product_id"],
                                 "product_name": prod["product_name"],
                                 "quantity": 1,
@@ -1596,8 +1542,17 @@ def page_pos():
         )
         product = product_map[selected_product_name]
 
-        effective_price = get_school_price(school_id, product["product_id"], product["price"])
-        stock_avail = get_stock_available(school_id, product["product_id"])
+        # BULK STOCK QUERY (one call, cached) — replaces old per-product lookups
+        stock_map = get_all_stock_for_school(school_id)
+        stock_avail = stock_map.get(int(product["product_id"]), 0)
+
+        effective_price = price_overrides.get(int(product["product_id"]),
+                                              float(product["price"]))
+        if school_id != default_school_id:
+            # If user picked a different school, use that school's overrides
+            school_overrides = get_school_prices_map(school_id)
+            effective_price = school_overrides.get(int(product["product_id"]),
+                                                   float(product["price"]))
 
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
@@ -1858,6 +1813,7 @@ def page_pos():
                         }
                         st.session_state.cart = []
                         st.session_state.preview_sale = None
+                        invalidate_stock_cache()
                         st.success(f"Sale #{sale_id} saved!")
                         st.rerun()
                     except Exception as e:
@@ -1911,6 +1867,7 @@ def page_pos():
                                    f"Undo sale #{r['sale_id']}")
                         st.session_state.last_receipt = None
                         st.session_state["confirm_undo"] = None
+                        invalidate_stock_cache()
                         st.success("Sale deleted. Stock restored.")
                         st.rerun()
                 with c2:
@@ -2103,6 +2060,7 @@ def page_stock():
                 (school_id, product["product_id"], qty, term_in, year, unit_cost),
             )
             log_action("STOCK_ADD", "stock", None, f"{qty} × {product_name} → {school_name}")
+            invalidate_stock_cache()
             st.success(f"Added {qty} × {product_name}.")
             st.rerun()
 
@@ -2116,7 +2074,8 @@ def page_stock():
         product_name = st.selectbox("Product", list(product_map.keys()), key="adj_product")
         product = product_map[product_name]
 
-        current = get_stock_available(school_id, product["product_id"])
+        stock_map = get_all_stock_for_school(school_id)
+        current = stock_map.get(int(product["product_id"]), 0)
         st.info(f"Current stock: **{current}**")
 
         c1, c2 = st.columns(2)
@@ -2141,6 +2100,7 @@ def page_stock():
                 )
                 log_action("STOCK_ADJUST", "stock", None,
                            f"-{adj_qty} × {product_name} ({reason})")
+                invalidate_stock_cache()
                 st.success(f"Removed {adj_qty} × {product_name}. Reason: {reason}")
                 st.rerun()
 
@@ -2176,30 +2136,32 @@ def page_stock():
                         ):
                             execute("DELETE FROM stock WHERE stock_id = %s;", (e["stock_id"],))
                             log_action("DELETE_STOCK", "stock", e["stock_id"], "Deleted entry")
+                            invalidate_stock_cache()
                             st.rerun()
 
         st.markdown("---")
         st.markdown("### Summary")
-        summary = query(
-            """SELECT p.product_name,
-                      COALESCE(SUM(st.quantity_brought),0) AS brought,
-                      COALESCE((SELECT SUM(si.quantity) FROM sale_items si
-                                JOIN sales s ON s.sale_id = si.sale_id
-                                WHERE s.school_id = %s AND si.product_id = p.product_id
-                                  AND s.voided = FALSE),0) AS sold
-               FROM products p
-               LEFT JOIN stock st ON st.product_id = p.product_id AND st.school_id = %s
-               GROUP BY p.product_id, p.product_name ORDER BY p.product_name;""",
-            (school_id, school_id),
-        )
-        if summary:
-            df = pd.DataFrame([{
-                "Product": r["product_name"],
-                "Brought": int(r["brought"]),
-                "Sold": int(r["sold"]),
-                "Remaining": int(r["brought"]) - int(r["sold"]),
-            } for r in summary])
-            st.dataframe(df, use_container_width=True, hide_index=True)
+        stock_map = get_all_stock_for_school(school_id)
+        summary_rows = []
+        for p in products:
+            brought = query(
+                "SELECT COALESCE(SUM(quantity_brought),0) AS q FROM stock WHERE school_id=%s AND product_id=%s;",
+                (school_id, p["product_id"]), fetch="one",
+            )
+            sold = query(
+                """SELECT COALESCE(SUM(si.quantity),0) AS q FROM sale_items si
+                   JOIN sales s ON s.sale_id = si.sale_id
+                   WHERE s.school_id=%s AND si.product_id=%s AND s.voided = FALSE;""",
+                (school_id, p["product_id"]), fetch="one",
+            )
+            summary_rows.append({
+                "Product": p["product_name"],
+                "Brought": int(brought["q"] or 0),
+                "Sold": int(sold["q"] or 0),
+                "Remaining": stock_map.get(int(p["product_id"]), 0),
+            })
+        if summary_rows:
+            st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
 
 
 # ============================================================
@@ -2338,6 +2300,7 @@ def page_products():
                 (school_map[sc], spp_category.strip() or "Default",
                  prod_map[pc], spp_price),
             )
+            get_school_prices_map.clear()
             st.success("Price saved.")
             st.rerun()
 
@@ -2361,6 +2324,7 @@ def page_products():
                         if confirm_delete("override", f"ovr_{r['id']}"):
                             execute("DELETE FROM school_product_prices WHERE school_product_price_id = %s;",
                                     (r["id"],))
+                            get_school_prices_map.clear()
                             st.rerun()
 
 
@@ -2607,6 +2571,7 @@ def page_reports():
                         (USER["username"], rid),
                     )
                     log_action("VOID_SALE", "sales", rid, f"Voided sale #{rid}")
+                    invalidate_stock_cache()
                     st.success("Sale voided.")
                     st.rerun()
 
@@ -2655,6 +2620,7 @@ def page_reports():
                             )
                         log_action("REFUND", "refunds", row["refund_id"],
                                    f"Refunded KES {total_refund:,.0f} on sale #{rid}")
+                        invalidate_stock_cache()
                         st.success(f"Refunded KES {total_refund:,.0f}")
                         st.session_state["refund_sale"] = None
                         st.rerun()
@@ -2857,6 +2823,7 @@ def page_tailor():
                         (school_map[school], prod_map[product], qty, term, year, cost),
                     )
                     log_action("TAILOR_PROD", "tailor_production", None, f"{qty} × {product}")
+                    invalidate_stock_cache()
                     st.rerun()
 
     st.markdown("---")
@@ -2885,6 +2852,7 @@ def page_tailor():
                             (r["production_id"],))
                     log_action("DELETE_TAILOR", "tailor_production",
                                r["production_id"], "Deleted")
+                    invalidate_stock_cache()
                     st.rerun()
 
 
