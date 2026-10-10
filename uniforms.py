@@ -481,7 +481,6 @@ if "user" not in st.session_state or not st.session_state.user:
     login_screen()
     st.stop()
 
-# Self-heal: ensure user_id exists (old sessions may be missing it)
 if "user_id" not in st.session_state.user:
     _u = query(
         "SELECT user_id, username, role, full_name FROM users WHERE username = %s AND active = TRUE;",
@@ -773,7 +772,8 @@ with st.sidebar:
         st.session_state.page = pages[0]
 
     st.session_state.page = st.radio(
-        "Navigate", pages, index=pages.index(st.session_state.page)
+        "Navigate", pages, index=pages.index(st.session_state.page),
+        key="main_nav_radio",
     )
 
     st.markdown("---")
@@ -781,7 +781,7 @@ with st.sidebar:
     st.caption(f"📅 {term} · {year}")
     st.caption(f"🛒 Cart: {len(st.session_state.cart)} items")
 
-    if st.button("🚪 Sign Out", use_container_width=True):
+    if st.button("🚪 Sign Out", use_container_width=True, key="signout_btn"):
         log_action("LOGOUT", "users", None, f"{USER['username']} signed out")
         st.session_state.user = None
         st.session_state.cart = []
@@ -819,7 +819,7 @@ def page_pos():
         with scan_cols[1]:
             st.write("")
             st.write("")
-            do_scan = st.button("Add", key="scan_add", use_container_width=True)
+            do_scan = st.button("Add", key="scan_add_btn", use_container_width=True)
 
         if scan and (do_scan or scan != st.session_state.get("scan_input", "")):
             st.session_state.scan_input = scan
@@ -863,8 +863,7 @@ def page_pos():
                JOIN products p ON p.product_id = si.product_id
                JOIN sales s ON s.sale_id = si.sale_id
                WHERE s.voided = FALSE
-               GROUP BY p.product_id, p.product_name, p.price
-               ORDER BY sold_qty DESC LIMIT 8;"""
+               GROUP BY p.product_id, p.product_name, p.price               ORDER BY sold_qty DESC LIMIT 8;"""
         )
 
         if top_sellers:
@@ -909,7 +908,7 @@ def page_pos():
             selected_cat = st.selectbox(
                 "Category",
                 ["All"] + list(cat_options.keys()),
-                key="pos_cat",
+                key="pos_cat_select",
             )
         with fcol2:
             st.write("")
@@ -924,11 +923,15 @@ def page_pos():
             return
 
         school_map = {s["school_name"]: s["school_id"] for s in schools}
-        selected_school_name = st.selectbox("School", list(school_map.keys()))
+        selected_school_name = st.selectbox(
+            "School", list(school_map.keys()), key="pos_school_select"
+        )
         school_id = school_map[selected_school_name]
 
         product_map = {p["product_name"]: p for p in filtered_products}
-        selected_product_name = st.selectbox("Product", list(product_map.keys()))
+        selected_product_name = st.selectbox(
+            "Product", list(product_map.keys()), key="pos_product_select"
+        )
         product = product_map[selected_product_name]
 
         effective_price = get_school_price(school_id, product["product_id"], product["price"])
@@ -936,22 +939,22 @@ def page_pos():
 
         c1, c2, c3 = st.columns([1, 1, 1])
         with c1:
-            qty = st.number_input("Quantity", min_value=1, value=1, step=1)
+            qty = st.number_input("Quantity", min_value=1, value=1, step=1, key="pos_qty")
         with c2:
             unit_price = st.number_input(
                 "Unit Price (KES)", min_value=0.0,
-                value=float(effective_price), step=10.0,
+                value=float(effective_price), step=10.0, key="pos_unit_price",
             )
         with c3:
             st.metric("Stock Available", stock_avail)
 
         c_paid, c_issue = st.columns(2)
         with c_paid:
-            paid_now = st.checkbox("💰 Paid now", value=True)
+            paid_now = st.checkbox("💰 Paid now", value=True, key="pos_paid_now")
         with c_issue:
-            issued_now = st.checkbox("📦 Issued now", value=True)
+            issued_now = st.checkbox("📦 Issued now", value=True, key="pos_issued_now")
 
-        if st.button("➕ Add to Cart", use_container_width=True):
+        if st.button("➕ Add to Cart", use_container_width=True, key="pos_add_cart"):
             if qty > stock_avail:
                 st.warning(f"Only {stock_avail} in stock.")
             else:
@@ -994,17 +997,17 @@ def page_pos():
                 cols[2].write(f"KES {item['unit_price']:,.0f}")
                 cols[3].write(f"**KES {item['quantity']*item['unit_price']:,.0f}**")
                 cols[4].caption(f"{paid_mark} {issued_mark}")
-                if cols[5].button("🗑", key=f"del_{i}"):
+                if cols[5].button("🗑", key=f"cart_del_{i}"):
                     st.session_state.cart.pop(i)
                     st.rerun()
 
             bcol1, bcol2 = st.columns(2)
             with bcol1:
-                if st.button("🗑 Clear Cart", use_container_width=True):
+                if st.button("🗑 Clear Cart", use_container_width=True, key="cart_clear"):
                     st.session_state.cart = []
                     st.rerun()
             with bcol2:
-                if st.button("⏸ Hold Sale", use_container_width=True):
+                if st.button("⏸ Hold Sale", use_container_width=True, key="cart_hold"):
                     label = f"Hold {datetime.now().strftime('%H:%M')}"
                     execute(
                         """INSERT INTO held_sales (label, cart_json, held_by)
@@ -1043,7 +1046,7 @@ def page_pos():
         else:
             default_name = ""
 
-        customer_name = st.text_input("Customer Name", value=default_name)
+        customer_name = st.text_input("Customer Name", value=default_name, key="pos_customer_name")
 
         st.markdown("**Payment Breakdown**")
         payment_methods = ["Cash", "M-Pesa", "Card", "Bank Transfer"]
@@ -1052,7 +1055,7 @@ def page_pos():
             [1, 2, 3],
             index=0,
             horizontal=True,
-            key="n_pay",
+            key="pos_n_pay",
         )
 
         payments = []
@@ -1064,7 +1067,7 @@ def page_pos():
                     f"Method {i+1}",
                     payment_methods,
                     index=i if i < len(payment_methods) else 0,
-                    key=f"pm_{i}",
+                    key=f"pos_pm_{i}",
                 )
             with pc[1]:
                 amt = st.number_input(
@@ -1072,7 +1075,7 @@ def page_pos():
                     min_value=0.0,
                     value=float(remaining) if i == n_pay - 1 else 0.0,
                     step=10.0,
-                    key=f"pa_{i}",
+                    key=f"pos_pa_{i}",
                 )
             payments.append({"method": method, "amount": amt})
             remaining -= amt
@@ -1098,10 +1101,13 @@ def page_pos():
         term_input = st.selectbox(
             "Term", ["Term 1", "Term 2", "Term 3"],
             index=["Term 1", "Term 2", "Term 3"].index(term),
+            key="pos_term",
         )
-        year_input = st.number_input("Year", value=year, min_value=2020, max_value=2100)
+        year_input = st.number_input(
+            "Year", value=year, min_value=2020, max_value=2100, key="pos_year"
+        )
 
-        if st.button("👁 Review Sale", type="primary", use_container_width=True):
+        if st.button("👁 Review Sale", type="primary", use_container_width=True, key="pos_review"):
             if not st.session_state.cart:
                 st.error("Cart is empty.")
             elif len({it["school_id"] for it in st.session_state.cart}) > 1:
@@ -1138,7 +1144,7 @@ def page_pos():
             cc1, cc2 = st.columns(2)
             with cc1:
                 if st.button("✅ Confirm & Save", type="primary",
-                             use_container_width=True, key="confirm_sale"):
+                             use_container_width=True, key="pos_confirm_sale"):
                     try:
                         customer_id = p.get("existing_customer_id")
                         if not customer_id and (p["customer_name"].strip() or p["customer_phone"].strip()):
@@ -1204,7 +1210,7 @@ def page_pos():
                     except Exception as e:
                         st.error(f"Sale failed: {e}")
             with cc2:
-                if st.button("❌ Cancel", use_container_width=True, key="cancel_sale"):
+                if st.button("❌ Cancel", use_container_width=True, key="pos_cancel_sale"):
                     st.session_state.preview_sale = None
                     st.rerun()
 
@@ -1236,9 +1242,10 @@ def page_pos():
                     file_name=f"receipt_{r['sale_id']:06d}.html",
                     mime="text/html",
                     use_container_width=True,
+                    key="pos_receipt_dl",
                 )
             with col_c:
-                if st.button("↩️ Undo This Sale", use_container_width=True):
+                if st.button("↩️ Undo This Sale", use_container_width=True, key="pos_undo_sale"):
                     st.session_state["confirm_undo"] = r["sale_id"]
 
             if st.session_state.get("confirm_undo") == r["sale_id"]:
@@ -1246,7 +1253,7 @@ def page_pos():
                 c1, c2, _ = st.columns([1, 1, 3])
                 with c1:
                     if st.button("✅ Yes, delete", type="primary",
-                                 use_container_width=True, key="undo_yes"):
+                                 use_container_width=True, key="pos_undo_yes"):
                         execute("DELETE FROM sale_items WHERE sale_id = %s;", (r["sale_id"],))
                         execute("DELETE FROM sales WHERE sale_id = %s;", (r["sale_id"],))
                         log_action("SALE_UNDONE", "sales", r["sale_id"],
@@ -1256,7 +1263,7 @@ def page_pos():
                         st.success("Sale deleted. Stock restored.")
                         st.rerun()
                 with c2:
-                    if st.button("❌ Cancel", use_container_width=True, key="undo_no"):
+                    if st.button("❌ Cancel", use_container_width=True, key="pos_undo_no"):
                         st.session_state["confirm_undo"] = None
                         st.rerun()
 
@@ -1278,7 +1285,7 @@ def page_pending():
     with col2:
         st.write("")
         st.write("")
-        show_completed = st.checkbox("Show delivered today", value=False)
+        show_completed = st.checkbox("Show delivered today", value=False, key="pending_show_completed")
 
     pending_count = query(
         "SELECT COUNT(*) AS c FROM sale_items WHERE paid = TRUE AND issued = FALSE;",
@@ -1428,14 +1435,16 @@ def page_stock():
         product = product_map[product_name]
 
         c1, c2, c3 = st.columns(3)
-        qty = c1.number_input("Quantity Brought", min_value=1, value=1, step=1)
+        qty = c1.number_input("Quantity Brought", min_value=1, value=1, step=1, key="stk_qty")
         unit_cost = c2.number_input("Unit Cost", min_value=0.0,
-                                    value=float(product["cost_price"] or 0), step=10.0)
+                                    value=float(product["cost_price"] or 0), step=10.0,
+                                    key="stk_unit_cost")
         term, year = current_term_year()
         term_in = c3.selectbox("Term", ["Term 1", "Term 2", "Term 3"],
-                               index=["Term 1", "Term 2", "Term 3"].index(term))
+                               index=["Term 1", "Term 2", "Term 3"].index(term),
+                               key="stk_term")
 
-        if st.button("➕ Add Stock", use_container_width=True):
+        if st.button("➕ Add Stock", use_container_width=True, key="stk_add_btn"):
             execute(
                 """INSERT INTO stock (school_id, product_id, quantity_brought, term, year, unit_cost)
                    VALUES (%s, %s, %s, %s, %s, %s);""",
@@ -1459,11 +1468,14 @@ def page_stock():
         st.info(f"Current stock: **{current}**")
 
         c1, c2 = st.columns(2)
-        reason = c1.selectbox("Reason", ["Damaged", "Lost", "Stocktake correction", "Transfer out", "Other"])
-        adj_qty = c2.number_input("Quantity to REMOVE", min_value=1, value=1, step=1)
-        notes = st.text_input("Notes (optional)")
+        reason = c1.selectbox("Reason",
+                              ["Damaged", "Lost", "Stocktake correction", "Transfer out", "Other"],
+                              key="adj_reason")
+        adj_qty = c2.number_input("Quantity to REMOVE", min_value=1, value=1, step=1,
+                                  key="adj_qty")
+        notes = st.text_input("Notes (optional)", key="adj_notes")
 
-        if st.button("📉 Apply Adjustment"):
+        if st.button("📉 Apply Adjustment", key="adj_apply"):
             if adj_qty > current:
                 st.error(f"Cannot remove more than available ({current}).")
             else:
@@ -1564,39 +1576,61 @@ def page_products():
                 if IS_ADMIN:
                     with cols[4]:
                         if confirm_delete(f"product '{p['product_name']}'", f"prod_{pid}"):
-                            execute("UPDATE products SET active = FALSE WHERE product_id = %s;", (pid,))
+                            execute(
+                                "UPDATE products SET active = FALSE WHERE product_id = %s;",
+                                (pid,),
+                            )
                             log_action("PRODUCT_DEACTIVATE", "products", pid, "Deactivated")
                             st.rerun()
             st.markdown("---")
 
         st.subheader("Add / Update Product")
-        c1, c2 = st.columns(2)
-        name = c1.text_input("Product Name")
-        sku = c2.text_input("SKU / Barcode")
-        c3, c4, c5 = st.columns(3)
-        price = c3.number_input("Price", min_value=0.0, step=10.0)
-        cost = c4.number_input("Cost", min_value=0.0, step=10.0)
-        cat_opts = ["—"] + [c["category_name"] for c in cats]
-        cat_choice = c5.selectbox("Category", cat_opts)
-        cat_id = None
-        if cat_choice != "—":
-            cat_id = next((c["category_id"] for c in cats if c["category_name"] == cat_choice), None)
 
-        if st.button("💾 Save Product"):
-            if not name.strip():
+        c1, c2 = st.columns(2)
+        with c1:
+            prod_name = st.text_input("Product Name", key="prod_form_name")
+        with c2:
+            prod_sku = st.text_input("SKU / Barcode", key="prod_form_sku")
+
+        c3, c4, c5 = st.columns(3)
+        with c3:
+            prod_price = st.number_input(
+                "Product Price (KES)", min_value=0.0, step=10.0, key="prod_form_price"
+            )
+        with c4:
+            prod_cost = st.number_input(
+                "Product Cost (KES)", min_value=0.0, step=10.0, key="prod_form_cost"
+            )
+        with c5:
+            cat_opts = ["—"] + [c["category_name"] for c in cats]
+            prod_cat_choice = st.selectbox("Category", cat_opts, key="prod_form_category")
+
+        prod_cat_id = None
+        if prod_cat_choice != "—":
+            prod_cat_id = next(
+                (c["category_id"] for c in cats if c["category_name"] == prod_cat_choice),
+                None,
+            )
+
+        if st.button("💾 Save Product", key="prod_form_save"):
+            if not prod_name.strip():
                 st.error("Name required.")
             else:
                 execute(
-                    """INSERT INTO products (product_name, sku, category_id, price, cost_price, active)
+                    """INSERT INTO products
+                           (product_name, sku, category_id, price, cost_price, active)
                        VALUES (%s, %s, %s, %s, %s, TRUE)
                        ON CONFLICT (product_name) DO UPDATE
-                       SET sku = EXCLUDED.sku, category_id = EXCLUDED.category_id,
-                           price = EXCLUDED.price, cost_price = EXCLUDED.cost_price,
+                       SET sku = EXCLUDED.sku,
+                           category_id = EXCLUDED.category_id,
+                           price = EXCLUDED.price,
+                           cost_price = EXCLUDED.cost_price,
                            active = TRUE;""",
-                    (name.strip(), sku.strip() or None, cat_id, price, cost),
+                    (prod_name.strip(), prod_sku.strip() or None, prod_cat_id,
+                     prod_price, prod_cost),
                 )
-                log_action("PRODUCT_SAVE", "products", None, f"{name}")
-                st.success(f"Saved {name}.")
+                log_action("PRODUCT_SAVE", "products", None, f"{prod_name}")
+                st.success(f"Saved {prod_name}.")
                 st.rerun()
 
     with tab2:
@@ -1606,19 +1640,27 @@ def page_products():
             cols[0].write(c["category_name"])
             if IS_ADMIN:
                 with cols[1]:
-                    if confirm_delete(f"category '{c['category_name']}'", f"cat_{c['category_id']}"):
-                        execute("UPDATE products SET category_id = NULL WHERE category_id = %s;",
-                                (c["category_id"],))
-                        execute("DELETE FROM product_categories WHERE category_id = %s;",
-                                (c["category_id"],))
+                    if confirm_delete(
+                        f"category '{c['category_name']}'",
+                        f"cat_{c['category_id']}",
+                    ):
+                        execute(
+                            "UPDATE products SET category_id = NULL WHERE category_id = %s;",
+                            (c["category_id"],),
+                        )
+                        execute(
+                            "DELETE FROM product_categories WHERE category_id = %s;",
+                            (c["category_id"],),
+                        )
                         st.rerun()
 
         st.markdown("---")
-        new_cat = st.text_input("New category name")
-        if st.button("➕ Add Category"):
+        new_cat = st.text_input("New category name", key="new_cat_name")
+        if st.button("➕ Add Category", key="add_cat_btn"):
             if new_cat.strip():
                 execute(
-                    "INSERT INTO product_categories (category_name) VALUES (%s) ON CONFLICT DO NOTHING;",
+                    "INSERT INTO product_categories (category_name) "
+                    "VALUES (%s) ON CONFLICT DO NOTHING;",
                     (new_cat.strip(),),
                 )
                 st.rerun()
@@ -1628,21 +1670,26 @@ def page_products():
         products = get_products()
         if not schools or not products:
             return
+
         school_map = {s["school_name"]: s["school_id"] for s in schools}
         prod_map = {p["product_name"]: p["product_id"] for p in products}
 
         sc = st.selectbox("School", list(school_map.keys()), key="pp_school")
         pc = st.selectbox("Product", list(prod_map.keys()), key="pp_prod")
-        cat = st.text_input("Category", value="Default")
-        pr = st.number_input("Price", min_value=0.0, step=10.0)
+        spp_category = st.text_input("Category", value="Default", key="pp_category")
+        spp_price = st.number_input(
+            "Override Price (KES)", min_value=0.0, step=10.0, key="pp_price"
+        )
 
-        if st.button("💾 Save Price Override"):
+        if st.button("💾 Save Price Override", key="pp_save"):
             execute(
-                """INSERT INTO school_product_prices (school_id, category_name, product_id, price)
+                """INSERT INTO school_product_prices
+                       (school_id, category_name, product_id, price)
                    VALUES (%s, %s, %s, %s)
                    ON CONFLICT (school_id, category_name, product_id)
                    DO UPDATE SET price = EXCLUDED.price;""",
-                (school_map[sc], cat.strip() or "Default", prod_map[pc], pr),
+                (school_map[sc], spp_category.strip() or "Default",
+                 prod_map[pc], spp_price),
             )
             st.success("Price saved.")
             st.rerun()
@@ -1665,8 +1712,11 @@ def page_products():
                 if IS_MANAGER:
                     with cols[4]:
                         if confirm_delete(f"override", f"ovr_{r['id']}"):
-                            execute("DELETE FROM school_product_prices WHERE school_product_price_id = %s;",
-                                    (r["id"],))
+                            execute(
+                                "DELETE FROM school_product_prices "
+                                "WHERE school_product_price_id = %s;",
+                                (r["id"],),
+                            )
                             st.rerun()
 
 
@@ -1689,8 +1739,8 @@ def page_schools():
 
     st.markdown("---")
     st.subheader("Add School")
-    name = st.text_input("School Name")
-    if st.button("💾 Save School"):
+    name = st.text_input("School Name", key="new_school_name")
+    if st.button("💾 Save School", key="save_school_btn"):
         if name.strip():
             execute(
                 "INSERT INTO schools (school_name) VALUES (%s) ON CONFLICT DO NOTHING;",
@@ -1793,10 +1843,14 @@ def page_financials():
     st.markdown("---")
     st.subheader("Record Transaction")
     with st.form("fin_form", clear_on_submit=True):
-        ttype = st.selectbox("Type", ["Expense", "Capital Contribution", "Withdrawal", "Other Income"])
-        cat = st.text_input("Category", value="General")
-        desc = st.text_input("Description")
-        amt = st.number_input("Amount", min_value=0.0, step=100.0)
+        ttype = st.selectbox(
+            "Type",
+            ["Expense", "Capital Contribution", "Withdrawal", "Other Income"],
+            key="fin_type",
+        )
+        cat = st.text_input("Category", value="General", key="fin_cat")
+        desc = st.text_input("Description", key="fin_desc")
+        amt = st.number_input("Amount", min_value=0.0, step=100.0, key="fin_amt")
         term, year = current_term_year()
         if st.form_submit_button("💾 Save"):
             execute(
@@ -1819,9 +1873,9 @@ def page_reports():
 
     with tab1:
         c1, c2, c3 = st.columns(3)
-        start = c1.date_input("From", value=datetime.now() - timedelta(days=30))
-        end = c2.date_input("To", value=datetime.now())
-        include_voided = c3.checkbox("Include voided")
+        start = c1.date_input("From", value=datetime.now() - timedelta(days=30), key="rep_start")
+        end = c2.date_input("To", value=datetime.now(), key="rep_end")
+        include_voided = c3.checkbox("Include voided", key="rep_voided")
 
         rows = query(
             f"""SELECT s.sale_id, s.sale_date, sch.school_name,
@@ -1843,19 +1897,33 @@ def page_reports():
             df = pd.DataFrame(rows)
             st.dataframe(df, use_container_width=True, hide_index=True)
 
-            buf = io.BytesIO()
-            df.to_excel(buf, index=False, engine="openpyxl")
+            try:
+                buf = io.BytesIO()
+                df.to_excel(buf, index=False, engine="openpyxl")
+                st.download_button(
+                    "⬇ Excel",
+                    data=buf.getvalue(),
+                    file_name=f"sales_{start}_{end}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="rep_excel_dl",
+                )
+            except Exception as e:
+                st.caption(f"⚠️ Excel export unavailable: {e}")
+
             st.download_button(
-                "⬇ Excel",
-                data=buf.getvalue(),
-                file_name=f"sales_{start}_{end}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "⬇ CSV",
+                df.to_csv(index=False),
+                "sales.csv",
+                key="rep_csv_dl",
             )
-            st.download_button("⬇ CSV", df.to_csv(index=False), "sales.csv")
 
             st.markdown("---")
             st.subheader("Actions")
-            rid = st.selectbox("Sale to manage", [r["sale_id"] for r in rows])
+            rid = st.selectbox(
+                "Sale to manage",
+                [r["sale_id"] for r in rows],
+                key="rep_manage_sale",
+            )
             act1, act2, act3 = st.columns(3)
 
             with act1:
@@ -1920,7 +1988,8 @@ def page_reports():
 
                 reason = st.text_input("Reason", key=f"rr_{rid}")
 
-                if st.button("✅ Confirm Refund", type="primary"):
+                if st.button("✅ Confirm Refund", type="primary",
+                             key=f"refund_confirm_{rid}"):
                     total_refund = 0
                     refund_items = []
                     for it in sale_items:
@@ -1991,7 +2060,7 @@ def page_close_day():
     st.title("📅 Close Day (Z-Report)")
     st.caption("Reconcile cash at end of day. Produces a permanent record.")
 
-    close_date = st.date_input("Date to close", value=datetime.now().date())
+    close_date = st.date_input("Date to close", value=datetime.now().date(), key="close_date")
 
     sales_data = query(
         """SELECT COALESCE(SUM(total_amount),0) AS total, COUNT(*) AS num_sales
@@ -2045,6 +2114,7 @@ def page_close_day():
     counted_cash = st.number_input(
         "Actual cash counted in drawer (KES)",
         min_value=0.0, value=float(expected_cash), step=10.0,
+        key="close_counted_cash",
     )
     variance = counted_cash - expected_cash
 
@@ -2055,7 +2125,7 @@ def page_close_day():
     else:
         st.error(f"❌ Short by KES {abs(variance):,.0f}")
 
-    notes = st.text_area("Notes / reason for variance")
+    notes = st.text_area("Notes / reason for variance", key="close_notes")
 
     existing = query("SELECT * FROM daily_closings WHERE closing_date = %s;",
                      (close_date,), fetch="one")
@@ -2066,7 +2136,7 @@ def page_close_day():
             f"with variance KES {float(existing['variance']):,.0f}."
         )
 
-    if st.button("✅ Close Day", type="primary"):
+    if st.button("✅ Close Day", type="primary", key="close_day_btn"):
         try:
             if existing:
                 execute(
@@ -2122,15 +2192,15 @@ def page_tailor():
     with st.expander("➕ Record Production", expanded=False):
         with st.form("tailor_form", clear_on_submit=True):
             c1, c2 = st.columns(2)
-            school = c1.selectbox("School", list(school_map.keys()))
-            product = c2.selectbox("Product", list(prod_map.keys()))
+            school = c1.selectbox("School", list(school_map.keys()), key="tl_school")
+            product = c2.selectbox("Product", list(prod_map.keys()), key="tl_product")
             c3, c4 = st.columns(2)
-            tailor = c3.text_input("Tailor Name")
-            qty = c4.number_input("Qty Produced", min_value=1, value=1, step=1)
+            tailor = c3.text_input("Tailor Name", key="tl_tailor")
+            qty = c4.number_input("Qty Produced", min_value=1, value=1, step=1, key="tl_qty")
             c5, c6 = st.columns(2)
-            cost = c5.number_input("Cost/Item", min_value=0.0, step=10.0)
-            paid = c6.number_input("Amount Paid", min_value=0.0, step=100.0)
-            notes = st.text_input("Notes")
+            cost = c5.number_input("Cost/Item", min_value=0.0, step=10.0, key="tl_cost")
+            paid = c6.number_input("Amount Paid", min_value=0.0, step=100.0, key="tl_paid")
+            notes = st.text_input("Notes", key="tl_notes")
             term, year = current_term_year()
             if st.form_submit_button("💾 Save"):
                 if tailor.strip():
@@ -2197,7 +2267,11 @@ def page_audit():
 
     c1, c2 = st.columns([2, 1])
     search = c1.text_input("🔎 Search", key="audit_search").strip().lower()
-    action_filter = c2.selectbox("Action", ["All"] + sorted({r["action"] for r in rows}))
+    action_filter = c2.selectbox(
+        "Action",
+        ["All"] + sorted({r["action"] for r in rows}),
+        key="audit_action_filter",
+    )
 
     filtered = [r for r in rows
                 if (action_filter == "All" or r["action"] == action_filter)
@@ -2217,7 +2291,12 @@ def page_audit():
                     execute("DELETE FROM audit_log WHERE log_id = %s;", (r["log_id"],))
                     st.rerun()
 
-    st.download_button("⬇ CSV", pd.DataFrame(filtered).to_csv(index=False), "audit.csv")
+    st.download_button(
+        "⬇ CSV",
+        pd.DataFrame(filtered).to_csv(index=False),
+        "audit.csv",
+        key="audit_csv_dl",
+    )
 
 
 # ============================================================
@@ -2231,9 +2310,6 @@ def page_users():
         "SELECT user_id, username, full_name, role, active FROM users ORDER BY username;"
     )
 
-    # ============================================================
-    # EXISTING USERS
-    # ============================================================
     st.subheader("Existing Users")
     for u in users:
         cols = st.columns([2, 3, 2, 1, 1])
@@ -2251,9 +2327,6 @@ def page_users():
                     log_action("USER_DEACTIVATE", "users", u["user_id"], "Deactivated")
                     st.rerun()
 
-    # ============================================================
-    # ADD USER
-    # ============================================================
     st.markdown("---")
     st.subheader("Add User")
     with st.form("add_user_form", clear_on_submit=True):
@@ -2294,9 +2367,6 @@ def page_users():
                 st.success(f"User **{new_username}** created.")
                 st.rerun()
 
-    # ============================================================
-    # CHANGE MY PASSWORD
-    # ============================================================
     st.markdown("---")
     st.subheader("Change My Password")
 
@@ -2334,9 +2404,6 @@ def page_users():
                            "Password changed")
                 st.success("✅ Password changed successfully. Use it next time you log in.")
 
-    # ============================================================
-    # RESET ANOTHER USER'S PASSWORD (admin only)
-    # ============================================================
     if IS_ADMIN:
         st.markdown("---")
         st.subheader("Reset Another User's Password")
@@ -2351,8 +2418,10 @@ def page_users():
                             for u in other_users}
 
             with st.form("admin_reset_form", clear_on_submit=True):
-                target_label = st.selectbox("User", list(user_options.keys()))
-                admin_new_pw = st.text_input("New password", type="password", key="admin_reset_pw")
+                target_label = st.selectbox("User", list(user_options.keys()),
+                                            key="admin_reset_target")
+                admin_new_pw = st.text_input("New password", type="password",
+                                             key="admin_reset_pw")
                 admin_reset_submitted = st.form_submit_button("🔐 Reset")
 
             if admin_reset_submitted:
