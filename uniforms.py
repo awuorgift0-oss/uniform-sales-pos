@@ -1,11 +1,11 @@
 # ============================================================
-# UNIFORM SALES POS — COMPLETE PRODUCTION SYSTEM
+# UNIFORM SALES POS — PROFESSIONAL EDITION
 # ============================================================
 import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import streamlit.components.v1 as components
 from contextlib import contextmanager
 import bcrypt
@@ -16,49 +16,266 @@ import json
 # PAGE CONFIG
 # ============================================================
 st.set_page_config(
-    page_title="Uniform Sales POS",
-    page_icon="🧾",
+    page_title="Uniform Sales",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ============================================================
-# STYLING
+# DESIGN SYSTEM — PROFESSIONAL
 # ============================================================
 st.markdown("""
 <style>
-    .stApp { background-color: #eef6fb; }
-    [data-testid="stSidebar"] { background-color: #0b1f3a; }
-    [data-testid="stSidebar"] * { color: white; }
+    /* ---------- Base ---------- */
+    .stApp {
+        background-color: #f8fafc;
+    }
+
+    /* ---------- Typography ---------- */
+    html, body, [class*="css"] {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                     Roboto, sans-serif;
+        color: #1e293b;
+    }
+    h1 { font-size: 28px; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; margin-bottom: 4px; }
+    h2 { font-size: 20px; font-weight: 600; color: #1e293b; margin-top: 8px; margin-bottom: 8px; }
+    h3 { font-size: 16px; font-weight: 600; color: #334155; margin-top: 12px; margin-bottom: 6px; }
+    p  { color: #475569; }
+
+    /* ---------- Sidebar ---------- */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+        border-right: 1px solid #334155;
+    }
+    [data-testid="stSidebar"] * { color: #cbd5e1; }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 { color: #f1f5f9; }
     [data-testid="stSidebar"] .stButton > button {
-        background-color: #1f3a5f; color: white;
-        border: 1px solid #2c5282;
+        background-color: transparent;
+        color: #cbd5e1;
+        border: none;
+        text-align: left;
+        justify-content: flex-start;
+        padding: 8px 12px;
+        font-weight: 500;
+        font-size: 14px;
+        border-radius: 6px;
+        transition: background 0.15s;
+        width: 100%;
     }
-    h1, h2, h3 { color: #0b1f3a; }
+    [data-testid="stSidebar"] .stButton > button:hover {
+        background-color: #334155;
+        color: #f1f5f9;
+    }
+    [data-testid="stSidebar"] hr {
+        border-color: #334155;
+        margin: 12px 0;
+    }
+    [data-testid="stSidebar"] .stRadio > div {
+        gap: 2px;
+    }
+    [data-testid="stSidebar"] .stRadio label {
+        padding: 6px 8px;
+        border-radius: 6px;
+        transition: background 0.15s;
+        font-size: 14px;
+    }
+    [data-testid="stSidebar"] .stRadio label:hover {
+        background: #334155;
+    }
+
+    /* ---------- Buttons ---------- */
     .stButton > button {
-        background-color: #f28c28; color: white;
-        border: none; border-radius: 7px; font-weight: bold;
+        background-color: #f1f5f9;
+        color: #0f172a;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        font-weight: 500;
+        padding: 6px 14px;
+        transition: all 0.15s;
     }
-    .stButton > button:hover { background-color: #d97618; color: white; }
+    .stButton > button:hover {
+        background-color: #e2e8f0;
+        border-color: #cbd5e1;
+        color: #0f172a;
+    }
+    .stButton > button[kind="primary"] {
+        background-color: #1e293b;
+        color: #ffffff;
+        border: 1px solid #1e293b;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background-color: #0f172a;
+        border-color: #0f172a;
+        color: #ffffff;
+    }
+    .stDownloadButton > button {
+        background-color: #f1f5f9;
+        color: #0f172a;
+        border: 1px solid #e2e8f0;
+    }
+
+    /* ---------- Metrics ---------- */
     div[data-testid="stMetric"] {
-        background-color: white; border-radius: 10px; padding: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        background-color: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 16px 18px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     }
+    div[data-testid="stMetric"] > label {
+        color: #64748b !important;
+        font-size: 12px !important;
+        font-weight: 500 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    div[data-testid="stMetricValue"] {
+        color: #0f172a !important;
+        font-size: 26px !important;
+        font-weight: 700 !important;
+    }
+
+    /* ---------- Cards ---------- */
+    .card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 18px 20px;
+        margin-bottom: 14px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .card-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin: 0 0 12px 0;
+    }
+
+    /* ---------- KPI Grid ---------- */
+    .kpi-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 16px 18px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        height: 100%;
+    }
+    .kpi-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+    }
+    .kpi-value {
+        font-size: 26px;
+        font-weight: 700;
+        color: #0f172a;
+        letter-spacing: -0.5px;
+        line-height: 1.1;
+    }
+    .kpi-sub {
+        font-size: 12px;
+        color: #64748b;
+        margin-top: 6px;
+    }
+    .kpi-sub.pos { color: #059669; }
+    .kpi-sub.neg { color: #dc2626; }
+
+    /* ---------- Alerts ---------- */
+    .alert-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        background: #fef9c3;
+        border-left: 3px solid #eab308;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        font-size: 14px;
+        color: #713f12;
+    }
+    .alert-item.danger {
+        background: #fee2e2;
+        border-left-color: #dc2626;
+        color: #7f1d1d;
+    }
+    .alert-item.ok {
+        background: #dcfce7;
+        border-left-color: #16a34a;
+        color: #14532d;
+    }
+
+    /* ---------- Login ---------- */
     .login-box {
-        max-width: 400px; margin: 80px auto; padding: 40px;
-        background: white; border-radius: 14px;
-        box-shadow: 0 6px 24px rgba(11,31,58,0.15);
+        max-width: 380px;
+        margin: 80px auto;
+        padding: 40px;
+        background: #ffffff;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
     }
-    .login-box h1 { text-align: center; margin-bottom: 4px; }
-    .login-box p { text-align: center; color: #666; margin-bottom: 24px; }
+    .login-box h1 {
+        text-align: center;
+        font-size: 22px;
+        margin-bottom: 4px;
+    }
+    .login-box p {
+        text-align: center;
+        color: #64748b;
+        font-size: 14px;
+        margin-bottom: 24px;
+    }
+
+    /* ---------- Tabs ---------- */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 8px 16px;
+        font-weight: 500;
+        color: #64748b;
+        background: transparent;
+        border-radius: 0;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #0f172a !important;
+        border-bottom: 2px solid #1e293b !important;
+    }
+
+    /* ---------- Divider ---------- */
+    hr {
+        border: none;
+        border-top: 1px solid #e2e8f0;
+        margin: 16px 0;
+    }
+
+    /* ---------- Mobile ---------- */
+    @media (max-width: 768px) {
+        .stButton > button { padding: 10px 14px !important; font-size: 15px !important; min-height: 44px !important; }
+        input[type="number"], input[type="text"], input[type="password"] { font-size: 16px !important; }
+        h1 { font-size: 22px !important; }
+        .kpi-value { font-size: 22px !important; }
+    }
+
+    /* ---------- Print ---------- */
     @media print {
         [data-testid="stSidebar"], [data-testid="stHeader"],
-        .stButton, .stDownloadButton,
-        [data-testid="stToolbar"], footer { display: none !important; }
+        .stButton, .stDownloadButton, [data-testid="stToolbar"],
+        footer { display: none !important; }
         .stApp { background: white !important; }
     }
 </style>
 """, unsafe_allow_html=True)
+
 
 # ============================================================
 # DATABASE HELPERS
@@ -123,6 +340,40 @@ def execute_returning(sql, params=None):
             return None
         cur.execute(sql, params or ())
         return cur.fetchone()
+
+
+# ============================================================
+# CACHED MASTER DATA (fast page switches)
+# ============================================================
+@st.cache_data(ttl=60, show_spinner=False)
+def get_schools():
+    return query("SELECT school_id, school_name FROM schools ORDER BY school_name;")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_categories():
+    return query("SELECT category_id, category_name FROM product_categories ORDER BY category_name;")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_products(category_id=None):
+    sql = """SELECT p.product_id, p.product_name, p.sku, p.price, p.cost_price,
+                    p.category_id, c.category_name
+             FROM products p
+             LEFT JOIN product_categories c ON c.category_id = p.category_id
+             WHERE p.active = TRUE"""
+    params = []
+    if category_id:
+        sql += " AND p.category_id = %s"
+        params.append(category_id)
+    sql += " ORDER BY p.product_name;"
+    return query(sql, tuple(params))
+
+
+def clear_caches():
+    get_schools.clear()
+    get_categories.clear()
+    get_products.clear()
 
 
 # ============================================================
@@ -424,7 +675,7 @@ def log_action(action, table_name=None, record_id=None, details=None):
 
 
 # ============================================================
-# AUTHENTICATION
+# AUTH
 # ============================================================
 def verify_password(plain, hashed):
     try:
@@ -440,8 +691,8 @@ def hash_password(plain):
 def login_screen():
     st.markdown("""
     <div class="login-box">
-        <h1>🧾 Uniform Sales POS</h1>
-        <p>Please sign in to continue</p>
+        <h1>Uniform Sales</h1>
+        <p>Sign in to continue</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -450,7 +701,7 @@ def login_screen():
         with st.form("login_form"):
             username = st.text_input("Username", key="login_user")
             password = st.text_input("Password", type="password", key="login_pw")
-            submitted = st.form_submit_button("🔐 Sign In", use_container_width=True)
+            submitted = st.form_submit_button("Sign In", use_container_width=True, type="primary")
 
         if submitted:
             row = query(
@@ -468,14 +719,12 @@ def login_screen():
                 log_action("LOGIN", "users", row["user_id"], f"{row['username']} signed in")
                 st.rerun()
             else:
-                log_action("LOGIN_FAILED", "users", None, f"Failed login: {username}")
+                log_action("LOGIN_FAILED", "users", None, f"Failed: {username}")
                 st.error("Invalid username or password.")
-
-        st.caption("Default: **admin** / **admin2026** — change it after first login.")
 
 
 # ============================================================
-# SESSION GUARD (with self-heal)
+# SESSION GUARD
 # ============================================================
 if "user" not in st.session_state or not st.session_state.user:
     login_screen()
@@ -496,7 +745,7 @@ if "user_id" not in st.session_state.user:
         }
     else:
         st.session_state.user = None
-        st.warning("Your session expired. Please sign in again.")
+        st.warning("Session expired. Please sign in again.")
         st.stop()
 
 
@@ -507,7 +756,7 @@ def init_state():
     defaults = {
         "cart": [],
         "last_receipt": None,
-        "page": "🛒 Point of Sale",
+        "page": "📊 Dashboard",
         "confirm_undo": None,
         "preview_sale": None,
         "scan_input": "",
@@ -537,30 +786,6 @@ def current_term_year():
     else:
         term = "Term 3"
     return term, now.year
-
-
-def get_schools():
-    return query("SELECT school_id, school_name FROM schools ORDER BY school_name;")
-
-
-def get_categories():
-    return query("SELECT category_id, category_name FROM product_categories ORDER BY category_name;")
-
-
-def get_products(category_id=None, active_only=True):
-    sql = """SELECT p.product_id, p.product_name, p.sku, p.price, p.cost_price,
-                    p.category_id, c.category_name
-             FROM products p
-             LEFT JOIN product_categories c ON c.category_id = p.category_id
-             WHERE 1=1"""
-    params = []
-    if active_only:
-        sql += " AND p.active = TRUE"
-    if category_id:
-        sql += " AND p.category_id = %s"
-        params.append(category_id)
-    sql += " ORDER BY p.product_name;"
-    return query(sql, tuple(params))
 
 
 def get_school_price(school_id, product_id, default_price):
@@ -609,35 +834,33 @@ def find_customer_by_phone(phone):
         """SELECT * FROM customers
            WHERE REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') ILIKE %s
            LIMIT 1;""",
-        (f"%{digits}%",),
-        fetch="one",
+        (f"%{digits}%",), fetch="one",
     )
 
 
-def confirm_delete(label, key, summary="This cannot be undone.", cascade_options=None,
-                   cascade_default=True):
+def confirm_delete(label, key, summary="This cannot be undone.", cascade_options=None):
     state_key = f"cd_{key}"
     if state_key not in st.session_state:
         st.session_state[state_key] = False
 
     if not st.session_state[state_key]:
-        if st.button("🗑 Delete", key=f"ask_{key}"):
+        if st.button("Delete", key=f"ask_{key}"):
             st.session_state[state_key] = True
             st.rerun()
         return False
 
-    st.error(f"⚠️ Delete **{label}**?\n\n{summary}")
-
+    st.error(f"Delete **{label}**?\n\n{summary}")
     cascades = []
     if cascade_options:
         st.markdown("**Also do:**")
         for i, act in enumerate(cascade_options):
-            if st.checkbox(act["label"], value=cascade_default, key=f"cascade_{key}_{i}"):
+            if st.checkbox(act["label"], value=True, key=f"cascade_{key}_{i}"):
                 cascades.append(act)
 
     c1, c2, _ = st.columns([1, 1, 3])
     with c1:
-        if st.button("✅ Yes, delete", type="primary", key=f"yes_{key}", use_container_width=True):
+        if st.button("Confirm delete", type="primary", key=f"yes_{key}",
+                     use_container_width=True):
             for act in cascades:
                 try:
                     execute(act["sql"], act.get("params", ()))
@@ -646,7 +869,7 @@ def confirm_delete(label, key, summary="This cannot be undone.", cascade_options
             st.session_state[state_key] = False
             return True
     with c2:
-        if st.button("❌ Cancel", key=f"no_{key}", use_container_width=True):
+        if st.button("Cancel", key=f"no_{key}", use_container_width=True):
             st.session_state[state_key] = False
             st.rerun()
     return False
@@ -689,9 +912,10 @@ def build_receipt_html(r):
 <style>
     * {{ box-sizing: border-box; }}
     html, body {{ margin: 0; padding: 0; font-family: 'Courier New', monospace;
-                 background: #eef2f7; color: #000; }}
+                 background: #f8fafc; color: #000; }}
     .rc {{ max-width: 300px; margin: 20px auto; background: #fff;
-          border: 1px solid #ccc; padding: 14px 16px 18px; font-size: 12px; line-height: 1.4; }}
+          border: 1px solid #e2e8f0; padding: 14px 16px 18px;
+          font-size: 12px; line-height: 1.4; }}
     .rc-header {{ text-align: center; padding-bottom: 8px; }}
     .rc-title {{ font-size: 15px; font-weight: bold; letter-spacing: 2px; margin: 0; }}
     .rc-school {{ font-size: 12px; font-weight: bold; margin-top: 3px; }}
@@ -707,17 +931,17 @@ def build_receipt_html(r):
     .rc-flags {{ margin-top: 3px; }}
     .rc-flag {{ display: inline-block; font-size: 9px; font-weight: bold;
                padding: 1px 6px; border-radius: 8px; margin-right: 4px; }}
-    .rc-yes {{ background: #e6f7ee; color: #0a8f3c; }}
-    .rc-no  {{ background: #fdecea; color: #c0392b; }}
+    .rc-yes {{ background: #dcfce7; color: #166534; }}
+    .rc-no  {{ background: #fee2e2; color: #991b1b; }}
     .rc-total {{ display: flex; justify-content: space-between; font-size: 14px;
                 font-weight: bold; margin: 6px 0 2px; }}
     .rc-footer {{ text-align: center; margin-top: 10px; font-size: 12px; font-weight: bold; }}
-    .rc-void {{ background: #c0392b; color: #fff; text-align: center;
+    .rc-void {{ background: #dc2626; color: #fff; text-align: center;
                padding: 4px; font-weight: bold; letter-spacing: 2px; margin-bottom: 8px; }}
     .rc-print {{ display: block; width: 100%; margin-top: 14px; padding: 9px;
-                background: #f28c28; color: #fff; border: none; border-radius: 6px;
+                background: #1e293b; color: #fff; border: none; border-radius: 6px;
                 font-size: 13px; font-weight: bold; cursor: pointer; }}
-    .rc-print:hover {{ background: #d97618; }}
+    .rc-print:hover {{ background: #0f172a; }}
     @media print {{
         body {{ background: #fff; margin: 0; }}
         .rc {{ max-width: 100%; border: none; margin: 0; padding: 0; }}
@@ -745,7 +969,7 @@ def build_receipt_html(r):
     <div class="rc-meta">{payment_rows}</div>
     <div class="rc-hr"></div>
     <div class="rc-footer">Thank You, Customer!</div>
-    <button class="rc-print" onclick="window.print();">🖨 Print</button>
+    <button class="rc-print" onclick="window.print();">Print</button>
 </div>
 <script>window.focus();</script>
 </body></html>"""
@@ -755,33 +979,106 @@ def build_receipt_html(r):
 # SIDEBAR
 # ============================================================
 with st.sidebar:
-    st.markdown("## 🧾 Uniform POS")
-    st.caption(f"👤 {USER['name']} · `{USER['role']}`")
+    st.markdown(f"""
+    <div style="padding: 6px 4px 2px;">
+        <div style="font-size: 18px; font-weight: 700; color: #f1f5f9;
+                    letter-spacing: -0.3px;">
+            Uniform Sales
+        </div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;
+                    text-transform: uppercase; letter-spacing: 1px;">
+            Point of Sale
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown("---")
 
-    pages = ["🛒 Point of Sale", "📋 Pending Pickup", "📦 Stock Management"]
-    if IS_MANAGER:
-        pages += ["👕 Products & Prices", "🏫 Schools", "🧑 Customers"]
+    # Grouped navigation
+    nav_groups = {
+        "Overview": [
+            ("📊 Dashboard", "📊 Dashboard"),
+        ],
+        "Sales": [
+            ("🛒 Point of Sale", "🛒 Point of Sale"),
+            ("📋 Pending Pickup", "📋 Pending Pickup"),
+            ("🧑 Customers", "🧑 Customers"),
+        ],
+        "Inventory": [
+            ("📦 Stock", "📦 Stock Management"),
+            ("👕 Products", "👕 Products & Prices"),
+            ("🏫 Schools", "🏫 Schools"),
+        ],
+        "Operations": [
+            ("✂️ Tailor Production", "✂️ Tailor Production"),
+        ],
+        "Finance": [
+            ("💰 Financials", "💰 Financials"),
+            ("📈 Reports", "📊 Reports"),
+            ("📅 Close Day", "📅 Close Day"),
+        ],
+        "System": [],
+    }
+
+    # Role-based system section
     if IS_ADMIN:
-        pages += [
-            "💰 Financials", "📊 Reports", "📅 Close Day",
-            "✂️ Tailor Production", "📜 Audit Log", "👥 Users"
+        nav_groups["System"] = [
+            ("📜 Audit Log", "📜 Audit Log"),
+            ("👥 Users", "👥 Users"),
         ]
 
-    if st.session_state.page not in pages:
-        st.session_state.page = pages[0]
+    # Filter out empty groups
+    nav_groups = {k: v for k, v in nav_groups.items() if v}
 
-    st.session_state.page = st.radio(
-        "Navigate", pages, index=pages.index(st.session_state.page),
-        key="main_nav_radio",
-    )
+    # Build flat list of pages this user can access
+    available_pages = []
+    for group_name, items in nav_groups.items():
+        for label, page_key in items:
+            available_pages.append((group_name, label, page_key))
+
+    # Ensure current page is valid
+    valid_page_keys = [p[2] for p in available_pages]
+    if st.session_state.page not in valid_page_keys:
+        st.session_state.page = "📊 Dashboard"
+
+    # Render grouped nav
+    for group_name, items in nav_groups.items():
+        st.markdown(
+            f'<div style="font-size: 10px; font-weight: 600; color: #64748b;'
+            f'text-transform: uppercase; letter-spacing: 1.2px;'
+            f'padding: 8px 4px 4px;">{group_name}</div>',
+            unsafe_allow_html=True,
+        )
+        for label, page_key in items:
+            is_active = st.session_state.page == page_key
+            button_style = (
+                "background-color:#334155;color:#f1f5f9;"
+                if is_active else ""
+            )
+            if st.button(
+                label,
+                key=f"nav_{page_key}",
+                use_container_width=True,
+            ):
+                st.session_state.page = page_key
+                st.rerun()
 
     st.markdown("---")
-    term, year = current_term_year()
-    st.caption(f"📅 {term} · {year}")
-    st.caption(f"🛒 Cart: {len(st.session_state.cart)} items")
 
-    if st.button("🚪 Sign Out", use_container_width=True, key="signout_btn"):
+    # User info at bottom
+    st.markdown(f"""
+    <div style="padding: 4px;">
+        <div style="font-size: 13px; font-weight: 600; color: #f1f5f9;">
+            {USER['name']}
+        </div>
+        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;
+                    letter-spacing: 0.8px;">
+            {USER['role']}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if st.button("Sign Out", key="signout_btn", use_container_width=True):
         log_action("LOGOUT", "users", None, f"{USER['username']} signed out")
         st.session_state.user = None
         st.session_state.cart = []
@@ -791,10 +1088,378 @@ with st.sidebar:
 
 
 # ============================================================
+# PAGE: DASHBOARD
+# ============================================================
+def page_dashboard():
+    term, year = current_term_year()
+    today_str = datetime.now().strftime("%A, %d %B %Y")
+
+    # Header
+    st.markdown(f"""
+    <div style="display: flex; justify-content: space-between; align-items: baseline;
+                margin-bottom: 24px;">
+        <div>
+            <h1 style="margin: 0;">Dashboard</h1>
+            <p style="margin: 4px 0 0; color: #64748b; font-size: 14px;">
+                {today_str}
+            </p>
+        </div>
+        <div style="text-align: right;">
+            <div style="font-size: 13px; color: #64748b;">{term} · {year}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ============================================================
+    # TODAY'S KPIs
+    # ============================================================
+    today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+
+    today_sales = query(
+        """SELECT COALESCE(SUM(total_amount),0) AS total, COUNT(*) AS num
+           FROM sales WHERE sale_date::date = %s AND voided = FALSE;""",
+        (today,), fetch="one",
+    )
+    today_total = float(today_sales["total"] if today_sales else 0)
+    today_count = int(today_sales["num"] if today_sales else 0)
+
+    yest_sales = query(
+        """SELECT COALESCE(SUM(total_amount),0) AS total
+           FROM sales WHERE sale_date::date = %s AND voided = FALSE;""",
+        (yesterday,), fetch="one",
+    )
+    yest_total = float(yest_sales["total"] if yest_sales else 0)
+
+    # % change vs yesterday
+    if yest_total > 0:
+        pct_change = ((today_total - yest_total) / yest_total) * 100
+        change_class = "pos" if pct_change >= 0 else "neg"
+        change_text = f"{pct_change:+.1f}% vs yesterday"
+    else:
+        change_class = ""
+        change_text = "No comparison data"
+
+    pending_pickups = query(
+        "SELECT COUNT(*) AS c FROM sale_items WHERE paid = TRUE AND issued = FALSE;",
+        fetch="one",
+    )
+    pending_count = int(pending_pickups["c"] if pending_pickups else 0)
+
+    pending_sales_qty = query(
+        """SELECT COUNT(DISTINCT sale_id) AS c FROM sale_items
+           WHERE paid = TRUE AND issued = FALSE;""",
+        fetch="one",
+    )
+    pending_sales_count = int(pending_sales_qty["c"] if pending_sales_qty else 0)
+
+    # Expected cash — sum of cash payments today minus refunds today
+    cash_today = query(
+        """SELECT COALESCE(SUM(sp.amount),0) AS t
+           FROM sale_payments sp
+           JOIN sales s ON s.sale_id = sp.sale_id
+           WHERE s.sale_date::date = %s AND s.voided = FALSE
+             AND sp.method = 'Cash';""",
+        (today,), fetch="one",
+    )
+    cash_in = float(cash_today["t"] if cash_today else 0)
+
+    refunds_today = query(
+        "SELECT COALESCE(SUM(amount),0) AS t FROM refunds WHERE refund_date::date = %s;",
+        (today,), fetch="one",
+    )
+    refunds_sum = float(refunds_today["t"] if refunds_today else 0)
+
+    expected_cash = cash_in - refunds_sum
+
+    closed_today = query(
+        "SELECT closing_id FROM daily_closings WHERE closing_date = %s;",
+        (today,), fetch="one",
+    )
+
+    # KPI cards
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">Today's Sales</div>
+            <div class="kpi-value">KES {today_total:,.0f}</div>
+            <div class="kpi-sub {change_class}">{change_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with k2:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">Transactions</div>
+            <div class="kpi-value">{today_count}</div>
+            <div class="kpi-sub">sales recorded today</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with k3:
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">Pending Pickup</div>
+            <div class="kpi-value">{pending_count}</div>
+            <div class="kpi-sub">items · {pending_sales_count} sales</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with k4:
+        close_status = "Closed" if closed_today else "Not closed"
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div class="kpi-label">Expected Cash</div>
+            <div class="kpi-value">KES {expected_cash:,.0f}</div>
+            <div class="kpi-sub">{close_status}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
+    # ============================================================
+    # TRENDS + ALERTS
+    # ============================================================
+    col_trend, col_alerts = st.columns([2, 1])
+
+    with col_trend:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="card-title">Sales — Last 7 Days</div>',
+                    unsafe_allow_html=True)
+
+        trend = query(
+            """SELECT sale_date::date AS day,
+                      COALESCE(SUM(total_amount),0) AS total
+               FROM sales
+               WHERE sale_date::date >= %s AND voided = FALSE
+               GROUP BY day
+               ORDER BY day;""",
+            (today - timedelta(days=6),),
+        )
+
+        # Fill missing days with zero
+        trend_map = {r["day"]: float(r["total"]) for r in trend}
+        days = [today - timedelta(days=i) for i in range(6, -1, -1)]
+        chart_data = pd.DataFrame({
+            "Day": [d.strftime("%a") for d in days],
+            "Sales": [trend_map.get(d, 0) for d in days],
+        })
+
+        if any(chart_data["Sales"] > 0):
+            st.bar_chart(chart_data.set_index("Day"), height=220, color="#3b82f6")
+        else:
+            st.info("No sales in the last 7 days.")
+
+        # Summary stats
+        if trend:
+            totals = [float(r["total"]) for r in trend]
+            avg = sum(totals) / len(totals) if totals else 0
+            hi = max(totals) if totals else 0
+            lo = min(totals) if totals else 0
+            st.caption(f"Average: KES {avg:,.0f} · Highest: KES {hi:,.0f} · Lowest: KES {lo:,.0f}")
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_alerts:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="card-title">Alerts</div>', unsafe_allow_html=True)
+
+        alerts_found = False
+
+        # Low stock: products with < 10 remaining for any school
+        low_stock = query(
+            """SELECT p.product_name, s.school_name,
+                      COALESCE((SELECT SUM(st.quantity_brought) FROM stock st
+                                WHERE st.school_id = s.school_id AND st.product_id = p.product_id),0)
+                      -
+                      COALESCE((SELECT SUM(si.quantity) FROM sale_items si
+                                JOIN sales sa ON sa.sale_id = si.sale_id
+                                WHERE sa.school_id = s.school_id AND si.product_id = p.product_id
+                                  AND sa.voided = FALSE),0) AS remaining
+               FROM products p
+               CROSS JOIN schools s
+               WHERE p.active = TRUE
+               ORDER BY remaining ASC
+               LIMIT 5;"""
+        )
+
+        low_items = [r for r in low_stock if int(r["remaining"]) < 10]
+        if low_items:
+            alerts_found = True
+            st.markdown(
+                f'<div class="alert-item">⚠️ {len(low_items)} product(s) low on stock</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Aged pickups
+        aged = query(
+            """SELECT COUNT(*) AS c FROM sale_items si
+               JOIN sales s ON s.sale_id = si.sale_id
+               WHERE si.paid = TRUE AND si.issued = FALSE
+                 AND s.sale_date < NOW() - INTERVAL '7 days';""",
+            fetch="one",
+        )
+        aged_count = int(aged["c"] if aged else 0)
+        if aged_count > 0:
+            alerts_found = True
+            st.markdown(
+                f'<div class="alert-item danger">🕐 {aged_count} item(s) pending pickup for over 7 days</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Cash variance from last close
+        last_close = query(
+            """SELECT variance, closing_date FROM daily_closings
+               ORDER BY closing_date DESC LIMIT 1;""",
+            fetch="one",
+        )
+        if last_close and abs(float(last_close["variance"])) > 1:
+            alerts_found = True
+            v = float(last_close["variance"])
+            st.markdown(
+                f'<div class="alert-item danger">💰 Cash variance on '
+                f'{last_close["closing_date"].strftime("%d %b")}: '
+                f'KES {v:+,.0f}</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Unpaid (credit) sales
+        unpaid = query(
+            """SELECT COUNT(*) AS c FROM sale_items
+               WHERE paid = FALSE AND issued = TRUE;""",
+            fetch="one",
+        )
+        unpaid_count = int(unpaid["c"] if unpaid else 0)
+        if unpaid_count > 0:
+            alerts_found = True
+            st.markdown(
+                f'<div class="alert-item">💸 {unpaid_count} item(s) issued but not paid</div>',
+                unsafe_allow_html=True,
+            )
+
+        if not alerts_found:
+            st.markdown(
+                '<div class="alert-item ok">✓ All clear — no issues</div>',
+                unsafe_allow_html=True,
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ============================================================
+    # TOP PRODUCTS + PAYMENT MIX
+    # ============================================================
+    col_top, col_pay = st.columns([1, 1])
+
+    with col_top:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="card-title">Top Products — Last 7 Days</div>',
+                    unsafe_allow_html=True)
+
+        top_products = query(
+            """SELECT p.product_name, SUM(si.quantity) AS qty,
+                      SUM(si.line_total) AS revenue
+               FROM sale_items si
+               JOIN products p ON p.product_id = si.product_id
+               JOIN sales s ON s.sale_id = si.sale_id
+               WHERE s.sale_date::date >= %s AND s.voided = FALSE
+               GROUP BY p.product_name
+               ORDER BY qty DESC LIMIT 5;""",
+            (today - timedelta(days=6),),
+        )
+        if top_products:
+            for i, p in enumerate(top_products, 1):
+                st.markdown(
+                    f"""<div style="display: flex; justify-content: space-between;
+                                    padding: 8px 0; border-bottom: 1px solid #f1f5f9;">
+                        <div><strong>{i}.</strong> {p['product_name']}</div>
+                        <div style="color: #64748b; font-size: 13px;">
+                            ×{int(p['qty'])} · KES {float(p['revenue']):,.0f}
+                        </div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.caption("No sales in the last 7 days.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_pay:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="card-title">Today by Payment Method</div>',
+                    unsafe_allow_html=True)
+
+        pay_mix = query(
+            """SELECT sp.method, SUM(sp.amount) AS total
+               FROM sale_payments sp
+               JOIN sales s ON s.sale_id = sp.sale_id
+               WHERE s.sale_date::date = %s AND s.voided = FALSE
+               GROUP BY sp.method
+               ORDER BY total DESC;""",
+            (today,),
+        )
+        if pay_mix:
+            total_all = sum(float(p["total"]) for p in pay_mix)
+            for p in pay_mix:
+                pct = (float(p["total"]) / total_all * 100) if total_all else 0
+                st.markdown(
+                    f"""<div style="padding: 8px 0;">
+                        <div style="display: flex; justify-content: space-between;
+                                    margin-bottom: 4px;">
+                            <span>{p['method']}</span>
+                            <span style="color: #64748b; font-size: 13px;">
+                                KES {float(p['total']):,.0f} · {pct:.0f}%
+                            </span>
+                        </div>
+                        <div style="background: #f1f5f9; height: 6px; border-radius: 3px;
+                                    overflow: hidden;">
+                            <div style="background: #3b82f6; height: 100%; width: {pct}%;"></div>
+                        </div>
+                    </div>""",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.caption("No payments today yet.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ============================================================
+    # QUICK ACTIONS
+    # ============================================================
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">Quick Actions</div>', unsafe_allow_html=True)
+
+    qa = st.columns(5)
+    with qa[0]:
+        if st.button("New Sale", use_container_width=True, key="qa_pos"):
+            st.session_state.page = "🛒 Point of Sale"
+            st.rerun()
+    with qa[1]:
+        if st.button("Pending Pickup", use_container_width=True, key="qa_pickup"):
+            st.session_state.page = "📋 Pending Pickup"
+            st.rerun()
+    with qa[2]:
+        if st.button("Add Stock", use_container_width=True, key="qa_stock"):
+            st.session_state.page = "📦 Stock Management"
+            st.rerun()
+    with qa[3]:
+        if st.button("Tailor Production", use_container_width=True, key="qa_tailor"):
+            st.session_state.page = "✂️ Tailor Production"
+            st.rerun()
+    with qa[4]:
+        if IS_ADMIN:
+            if st.button("Close Day", use_container_width=True, key="qa_close"):
+                st.session_state.page = "📅 Close Day"
+                st.rerun()
+        else:
+            if st.button("Full Reports", use_container_width=True, key="qa_reports"):
+                st.session_state.page = "📊 Reports"
+                st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ============================================================
 # PAGE: POINT OF SALE
 # ============================================================
 def page_pos():
-    st.title("🛒 Point of Sale")
+    st.markdown("# Point of Sale")
+    st.caption("Add items, review the sale, confirm.")
 
     schools = get_schools()
     products = get_products()
@@ -807,12 +1472,12 @@ def page_pos():
     col_left, col_right = st.columns([2, 1])
 
     with col_left:
-        st.subheader("⚡ Quick Add")
+        st.markdown("### Quick Add")
 
         scan_cols = st.columns([3, 1])
         with scan_cols[0]:
             scan = st.text_input(
-                "🔖 Scan barcode or type SKU",
+                "Scan barcode or type SKU",
                 key="scan_field",
                 placeholder="Scan or type SKU and press Enter",
             )
@@ -825,8 +1490,7 @@ def page_pos():
             st.session_state.scan_input = scan
             matched = query(
                 "SELECT * FROM products WHERE sku ILIKE %s AND active = TRUE LIMIT 1;",
-                (scan.strip(),),
-                fetch="one",
+                (scan.strip(),), fetch="one",
             )
             if matched:
                 school_id = schools[0]["school_id"]
@@ -863,16 +1527,16 @@ def page_pos():
                JOIN products p ON p.product_id = si.product_id
                JOIN sales s ON s.sale_id = si.sale_id
                WHERE s.voided = FALSE
-               GROUP BY p.product_id, p.product_name, p.price               ORDER BY sold_qty DESC LIMIT 8;"""
+               GROUP BY p.product_id, p.product_name, p.price
+               ORDER BY sold_qty DESC LIMIT 8;"""
         )
-
         if top_sellers:
-            st.caption("🔥 Top sellers")
+            st.caption("Top sellers")
             quick_cols = st.columns(4)
             for i, prod in enumerate(top_sellers):
                 with quick_cols[i % 4]:
                     if st.button(
-                        f"➕ {prod['product_name']}",
+                        f"+ {prod['product_name']}",
                         key=f"quick_{prod['product_id']}",
                         use_container_width=True,
                     ):
@@ -900,15 +1564,13 @@ def page_pos():
                         st.rerun()
 
         st.markdown("---")
-        st.subheader("Add Items")
+        st.markdown("### Add Items")
 
         fcol1, fcol2 = st.columns(2)
         with fcol1:
             cat_options = {c["category_name"]: c["category_id"] for c in categories}
             selected_cat = st.selectbox(
-                "Category",
-                ["All"] + list(cat_options.keys()),
-                key="pos_cat_select",
+                "Category", ["All"] + list(cat_options.keys()), key="pos_cat_select"
             )
         with fcol2:
             st.write("")
@@ -950,11 +1612,12 @@ def page_pos():
 
         c_paid, c_issue = st.columns(2)
         with c_paid:
-            paid_now = st.checkbox("💰 Paid now", value=True, key="pos_paid_now")
+            paid_now = st.checkbox("Paid now", value=True, key="pos_paid_now")
         with c_issue:
-            issued_now = st.checkbox("📦 Issued now", value=True, key="pos_issued_now")
+            issued_now = st.checkbox("Issued now", value=True, key="pos_issued_now")
 
-        if st.button("➕ Add to Cart", use_container_width=True, key="pos_add_cart"):
+        if st.button("Add to Cart", use_container_width=True, key="pos_add_cart",
+                     type="primary"):
             if qty > stock_avail:
                 st.warning(f"Only {stock_avail} in stock.")
             else:
@@ -983,31 +1646,31 @@ def page_pos():
                 st.rerun()
 
         st.markdown("---")
-        st.subheader("Current Cart")
+        st.markdown("### Current Cart")
 
         if not st.session_state.cart:
             st.info("Cart is empty.")
         else:
             for i, item in enumerate(st.session_state.cart):
                 cols = st.columns([4, 1, 1, 1, 1, 1])
-                paid_mark = "💰" if item.get("paid", True) else "💸"
-                issued_mark = "📦" if item.get("issued", True) else "⏳"
+                paid_mark = "Paid" if item.get("paid", True) else "Unpaid"
+                issued_mark = "Issued" if item.get("issued", True) else "Pending"
                 cols[0].write(f"**{item['product_name']}**  \n{item['school_name']}")
                 cols[1].write(f"×{item['quantity']}")
                 cols[2].write(f"KES {item['unit_price']:,.0f}")
                 cols[3].write(f"**KES {item['quantity']*item['unit_price']:,.0f}**")
-                cols[4].caption(f"{paid_mark} {issued_mark}")
-                if cols[5].button("🗑", key=f"cart_del_{i}"):
+                cols[4].caption(f"{paid_mark} · {issued_mark}")
+                if cols[5].button("Del", key=f"cart_del_{i}"):
                     st.session_state.cart.pop(i)
                     st.rerun()
 
             bcol1, bcol2 = st.columns(2)
             with bcol1:
-                if st.button("🗑 Clear Cart", use_container_width=True, key="cart_clear"):
+                if st.button("Clear Cart", use_container_width=True, key="cart_clear"):
                     st.session_state.cart = []
                     st.rerun()
             with bcol2:
-                if st.button("⏸ Hold Sale", use_container_width=True, key="cart_hold"):
+                if st.button("Hold Sale", use_container_width=True, key="cart_hold"):
                     label = f"Hold {datetime.now().strftime('%H:%M')}"
                     execute(
                         """INSERT INTO held_sales (label, cart_json, held_by)
@@ -1020,7 +1683,7 @@ def page_pos():
 
         held = query("SELECT * FROM held_sales ORDER BY held_at DESC LIMIT 10;")
         if held:
-            with st.expander(f"⏸ Held Sales ({len(held)})"):
+            with st.expander(f"Held Sales ({len(held)})"):
                 for h in held:
                     hc = st.columns([3, 1, 1])
                     hc[0].write(f"**{h['label']}** — {h['held_at'].strftime('%H:%M')}")
@@ -1028,12 +1691,12 @@ def page_pos():
                         st.session_state.cart = json.loads(h["cart_json"])
                         execute("DELETE FROM held_sales WHERE held_id = %s;", (h["held_id"],))
                         st.rerun()
-                    if hc[2].button("🗑", key=f"delh_{h['held_id']}"):
+                    if hc[2].button("Del", key=f"delh_{h['held_id']}"):
                         execute("DELETE FROM held_sales WHERE held_id = %s;", (h["held_id"],))
                         st.rerun()
 
     with col_right:
-        st.subheader("Checkout")
+        st.markdown("### Checkout")
         total = cart_total()
         st.metric("Total", f"KES {total:,.0f}")
 
@@ -1041,7 +1704,7 @@ def page_pos():
         existing_customer = find_customer_by_phone(customer_phone) if customer_phone else None
 
         if existing_customer:
-            st.success(f"✅ Found: **{existing_customer['customer_name']}**")
+            st.success(f"Found: {existing_customer['customer_name']}")
             default_name = existing_customer["customer_name"]
         else:
             default_name = ""
@@ -1051,10 +1714,7 @@ def page_pos():
         st.markdown("**Payment Breakdown**")
         payment_methods = ["Cash", "M-Pesa", "Card", "Bank Transfer"]
         n_pay = st.radio(
-            "Number of payment methods",
-            [1, 2, 3],
-            index=0,
-            horizontal=True,
+            "Number of payment methods", [1, 2, 3], index=0, horizontal=True,
             key="pos_n_pay",
         )
 
@@ -1064,18 +1724,15 @@ def page_pos():
             pc = st.columns([2, 1])
             with pc[0]:
                 method = st.selectbox(
-                    f"Method {i+1}",
-                    payment_methods,
+                    f"Method {i+1}", payment_methods,
                     index=i if i < len(payment_methods) else 0,
                     key=f"pos_pm_{i}",
                 )
             with pc[1]:
                 amt = st.number_input(
-                    f"Amount {i+1}",
-                    min_value=0.0,
+                    f"Amount {i+1}", min_value=0.0,
                     value=float(remaining) if i == n_pay - 1 else 0.0,
-                    step=10.0,
-                    key=f"pos_pa_{i}",
+                    step=10.0, key=f"pos_pa_{i}",
                 )
             payments.append({"method": method, "amount": amt})
             remaining -= amt
@@ -1084,11 +1741,11 @@ def page_pos():
         diff = entered_total - total
 
         if abs(diff) < 0.01:
-            st.success(f"✅ Payments balance: KES {entered_total:,.0f}")
+            st.success(f"Balanced: KES {entered_total:,.0f}")
         elif diff > 0:
-            st.warning(f"⚠️ Over by KES {diff:,.0f}")
+            st.warning(f"Over by KES {diff:,.0f}")
         else:
-            st.warning(f"⚠️ Short by KES {abs(diff):,.0f}")
+            st.warning(f"Short by KES {abs(diff):,.0f}")
 
         if abs(diff) < 0.01:
             payment_status = "Paid"
@@ -1100,18 +1757,17 @@ def page_pos():
         term, year = current_term_year()
         term_input = st.selectbox(
             "Term", ["Term 1", "Term 2", "Term 3"],
-            index=["Term 1", "Term 2", "Term 3"].index(term),
-            key="pos_term",
+            index=["Term 1", "Term 2", "Term 3"].index(term), key="pos_term",
         )
         year_input = st.number_input(
             "Year", value=year, min_value=2020, max_value=2100, key="pos_year"
         )
 
-        if st.button("👁 Review Sale", type="primary", use_container_width=True, key="pos_review"):
+        if st.button("Review Sale", type="primary", use_container_width=True, key="pos_review"):
             if not st.session_state.cart:
                 st.error("Cart is empty.")
             elif len({it["school_id"] for it in st.session_state.cart}) > 1:
-                st.error("Cart has items from multiple schools. Complete them separately.")
+                st.error("Cart has items from multiple schools.")
             else:
                 st.session_state.preview_sale = {
                     "cart": list(st.session_state.cart),
@@ -1129,9 +1785,8 @@ def page_pos():
         if st.session_state.preview_sale:
             p = st.session_state.preview_sale
             st.markdown("---")
-            st.warning("⚠️ **Review before saving**")
+            st.warning("Review before saving")
             st.write(f"**Customer:** {p['customer_name'] or 'Walk-in'}")
-            st.write("**Items:**")
             for it in p["cart"]:
                 st.write(f"- {it['quantity']} × {it['product_name']} @ KES {it['unit_price']:,.0f}")
             st.write(f"**Total:** KES {p['total']:,.0f}")
@@ -1139,11 +1794,10 @@ def page_pos():
                 st.write("**Payments:** " + ", ".join(
                     f"{pay['method']} KES {pay['amount']:,.0f}" for pay in p["payments"]
                 ))
-            st.write(f"**Term:** {p['term']} · {p['year']}")
 
             cc1, cc2 = st.columns(2)
             with cc1:
-                if st.button("✅ Confirm & Save", type="primary",
+                if st.button("Confirm & Save", type="primary",
                              use_container_width=True, key="pos_confirm_sale"):
                     try:
                         customer_id = p.get("existing_customer_id")
@@ -1181,8 +1835,7 @@ def page_pos():
 
                         for pay in p["payments"]:
                             execute(
-                                """INSERT INTO sale_payments (sale_id, method, amount)
-                                   VALUES (%s, %s, %s);""",
+                                "INSERT INTO sale_payments (sale_id, method, amount) VALUES (%s, %s, %s);",
                                 (sale_id, pay["method"], pay["amount"]),
                             )
 
@@ -1205,19 +1858,19 @@ def page_pos():
                         }
                         st.session_state.cart = []
                         st.session_state.preview_sale = None
-                        st.success(f"✅ Sale #{sale_id} saved!")
+                        st.success(f"Sale #{sale_id} saved!")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Sale failed: {e}")
             with cc2:
-                if st.button("❌ Cancel", use_container_width=True, key="pos_cancel_sale"):
+                if st.button("Cancel", use_container_width=True, key="pos_cancel_sale"):
                     st.session_state.preview_sale = None
                     st.rerun()
 
         if st.session_state.last_receipt:
             r = st.session_state.last_receipt
             st.markdown("---")
-            st.subheader("🧾 Last Receipt")
+            st.markdown("### Last Receipt")
 
             receipt_html = build_receipt_html(r)
             components.html(receipt_html, height=580, scrolling=True)
@@ -1230,29 +1883,27 @@ def page_pos():
                         w.document.write({receipt_html!r});
                         w.document.close(); w.focus();
                         setTimeout(function(){{ w.print(); }}, 400);
-                    " style="background:#f28c28;color:#fff;border:none;
-                    padding:10px 16px;border-radius:7px;font-weight:bold;
-                    cursor:pointer;width:100%;font-size:13px;">🖨 Print</button>""",
+                    " style="background:#1e293b;color:#fff;border:none;
+                    padding:10px 16px;border-radius:6px;font-weight:600;
+                    cursor:pointer;width:100%;font-size:13px;">Print</button>""",
                     height=50,
                 )
             with col_b:
                 st.download_button(
-                    "⬇ HTML",
-                    data=receipt_html,
+                    "HTML", data=receipt_html,
                     file_name=f"receipt_{r['sale_id']:06d}.html",
-                    mime="text/html",
-                    use_container_width=True,
+                    mime="text/html", use_container_width=True,
                     key="pos_receipt_dl",
                 )
             with col_c:
-                if st.button("↩️ Undo This Sale", use_container_width=True, key="pos_undo_sale"):
+                if st.button("Undo This Sale", use_container_width=True, key="pos_undo_sale"):
                     st.session_state["confirm_undo"] = r["sale_id"]
 
             if st.session_state.get("confirm_undo") == r["sale_id"]:
-                st.error(f"⚠️ Delete Sale #{r['sale_id']} (KES {r['total']:,.0f})?")
+                st.error(f"Delete Sale #{r['sale_id']} (KES {r['total']:,.0f})?")
                 c1, c2, _ = st.columns([1, 1, 3])
                 with c1:
-                    if st.button("✅ Yes, delete", type="primary",
+                    if st.button("Yes, delete", type="primary",
                                  use_container_width=True, key="pos_undo_yes"):
                         execute("DELETE FROM sale_items WHERE sale_id = %s;", (r["sale_id"],))
                         execute("DELETE FROM sales WHERE sale_id = %s;", (r["sale_id"],))
@@ -1263,7 +1914,7 @@ def page_pos():
                         st.success("Sale deleted. Stock restored.")
                         st.rerun()
                 with c2:
-                    if st.button("❌ Cancel", use_container_width=True, key="pos_undo_no"):
+                    if st.button("Cancel", use_container_width=True, key="pos_undo_no"):
                         st.session_state["confirm_undo"] = None
                         st.rerun()
 
@@ -1272,20 +1923,20 @@ def page_pos():
 # PAGE: PENDING PICKUP
 # ============================================================
 def page_pending():
-    st.title("📋 Pending Pickup")
-    st.caption("Items **paid for but not yet collected**. Tick as you hand each over.")
+    st.markdown("# Pending Pickup")
+    st.caption("Items paid for but not yet collected.")
 
     col1, col2 = st.columns([3, 1])
     with col1:
         search = st.text_input(
-            "🔎 Search by receipt #, phone, or name",
+            "Search by receipt #, phone, or name",
             placeholder="e.g. 000042 or 0722123456 or Mary",
             key="pending_search",
         ).strip().lower()
     with col2:
-        st.write("")
-        st.write("")
-        show_completed = st.checkbox("Show delivered today", value=False, key="pending_show_completed")
+        st.write(""); st.write("")
+        show_completed = st.checkbox("Show delivered today", value=False,
+                                     key="pending_show_completed")
 
     pending_count = query(
         "SELECT COUNT(*) AS c FROM sale_items WHERE paid = TRUE AND issued = FALSE;",
@@ -1307,10 +1958,10 @@ def page_pending():
     delivered_today = int(today_delivered["c"] or 0) if today_delivered else 0
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("⏳ Awaiting Pickup", total_pending)
-    m2.metric("💸 Unpaid (credit)", total_credit)
-    m3.metric("✅ Delivered Today", delivered_today)
-    m4.metric("🕐 Today", datetime.now().strftime("%d %b"))
+    m1.metric("Awaiting Pickup", total_pending)
+    m2.metric("Unpaid (credit)", total_credit)
+    m3.metric("Delivered Today", delivered_today)
+    m4.metric("Today", datetime.now().strftime("%d %b"))
 
     st.markdown("---")
 
@@ -1343,9 +1994,9 @@ def page_pending():
     )
 
     if not sales_rows:
-        st.success("🎉 No pending pickups.")
+        st.success("No pending pickups.")
     else:
-        st.subheader(f"📦 {len(sales_rows)} sale(s) awaiting pickup")
+        st.subheader(f"{len(sales_rows)} sale(s) awaiting pickup")
 
         for sale in sales_rows:
             sid = sale["sale_id"]
@@ -1372,7 +2023,7 @@ def page_pending():
                 )
 
                 with head[4]:
-                    if st.button("✅ Deliver All", key=f"deliver_all_{sid}",
+                    if st.button("Deliver All", key=f"deliver_all_{sid}",
                                  use_container_width=True, type="primary"):
                         for item in items:
                             execute("UPDATE sale_items SET issued = TRUE WHERE sale_item_id = %s;",
@@ -1396,12 +2047,12 @@ def page_pending():
                                        f"Issued {item['quantity']} × {item['product_name']}")
                             st.rerun()
 
-                st.markdown("<hr style='margin:10px 0;border:none;border-top:1px solid #e5e9f0;'>",
+                st.markdown("<hr style='margin:10px 0;border:none;border-top:1px solid #e2e8f0;'>",
                             unsafe_allow_html=True)
 
     if show_completed:
         st.markdown("---")
-        st.subheader("✅ Delivered Today")
+        st.markdown("### Delivered Today")
         delivered = query(
             """SELECT log_time, details, user_name FROM audit_log
                WHERE action = 'ITEM_ISSUED' AND log_time::date = CURRENT_DATE
@@ -1415,7 +2066,8 @@ def page_pending():
 # PAGE: STOCK
 # ============================================================
 def page_stock():
-    st.title("📦 Stock Management")
+    st.markdown("# Stock")
+    st.caption("Add, adjust, and view stock per school.")
 
     schools = get_schools()
     products = get_products()
@@ -1444,7 +2096,7 @@ def page_stock():
                                index=["Term 1", "Term 2", "Term 3"].index(term),
                                key="stk_term")
 
-        if st.button("➕ Add Stock", use_container_width=True, key="stk_add_btn"):
+        if st.button("Add Stock", use_container_width=True, key="stk_add_btn", type="primary"):
             execute(
                 """INSERT INTO stock (school_id, product_id, quantity_brought, term, year, unit_cost)
                    VALUES (%s, %s, %s, %s, %s, %s);""",
@@ -1455,7 +2107,7 @@ def page_stock():
             st.rerun()
 
     with tab2:
-        st.subheader("Stock Adjustment (Damaged / Lost / Correction)")
+        st.markdown("### Stock Adjustment")
         school_map = {s["school_name"]: s["school_id"] for s in schools}
         school_name = st.selectbox("School", list(school_map.keys()), key="adj_school")
         school_id = school_map[school_name]
@@ -1475,7 +2127,7 @@ def page_stock():
                                   key="adj_qty")
         notes = st.text_input("Notes (optional)", key="adj_notes")
 
-        if st.button("📉 Apply Adjustment", key="adj_apply"):
+        if st.button("Apply Adjustment", key="adj_apply", type="primary"):
             if adj_qty > current:
                 st.error(f"Cannot remove more than available ({current}).")
             else:
@@ -1527,7 +2179,7 @@ def page_stock():
                             st.rerun()
 
         st.markdown("---")
-        st.subheader("Summary")
+        st.markdown("### Summary")
         summary = query(
             """SELECT p.product_name,
                       COALESCE(SUM(st.quantity_brought),0) AS brought,
@@ -1554,17 +2206,23 @@ def page_stock():
 # PAGE: PRODUCTS
 # ============================================================
 def page_products():
-    st.title("👕 Products & Prices")
+    st.markdown("# Products & Prices")
+    st.caption("Manage your catalog, categories, and school-specific prices.")
 
     tab1, tab2, tab3 = st.tabs(["Products", "Categories", "School Prices"])
 
     with tab1:
-        products = get_products(active_only=False)
+        products = query(
+            """SELECT p.product_id, p.product_name, p.sku, p.price, p.cost_price,
+                      p.category_id, p.active, c.category_name
+               FROM products p
+               LEFT JOIN product_categories c ON c.category_id = p.category_id
+               ORDER BY p.product_name;"""
+        )
         cats = get_categories()
         cat_map = {c["category_id"]: c["category_name"] for c in cats}
 
         if products:
-            st.subheader("Product List")
             for p in products:
                 pid = p["product_id"]
                 status = "" if p.get("active", True) else " *(inactive)*"
@@ -1572,20 +2230,17 @@ def page_products():
                 cols[0].write(f"**{p['product_name']}**{status}")
                 cols[1].write(p["sku"] or "—")
                 cols[2].write(f"{cat_map.get(p['category_id'], '—')}")
-                cols[3].write(f"KES {float(p['price']):,.0f} / cost {float(p['cost_price']):,.0f}")
+                cols[3].write(f"KES {float(p['price']):,.0f} · cost {float(p['cost_price']):,.0f}")
                 if IS_ADMIN:
                     with cols[4]:
                         if confirm_delete(f"product '{p['product_name']}'", f"prod_{pid}"):
-                            execute(
-                                "UPDATE products SET active = FALSE WHERE product_id = %s;",
-                                (pid,),
-                            )
+                            execute("UPDATE products SET active = FALSE WHERE product_id = %s;", (pid,))
+                            clear_caches()
                             log_action("PRODUCT_DEACTIVATE", "products", pid, "Deactivated")
                             st.rerun()
             st.markdown("---")
 
-        st.subheader("Add / Update Product")
-
+        st.markdown("### Add / Update Product")
         c1, c2 = st.columns(2)
         with c1:
             prod_name = st.text_input("Product Name", key="prod_form_name")
@@ -1594,13 +2249,11 @@ def page_products():
 
         c3, c4, c5 = st.columns(3)
         with c3:
-            prod_price = st.number_input(
-                "Product Price (KES)", min_value=0.0, step=10.0, key="prod_form_price"
-            )
+            prod_price = st.number_input("Price (KES)", min_value=0.0, step=10.0,
+                                         key="prod_form_price")
         with c4:
-            prod_cost = st.number_input(
-                "Product Cost (KES)", min_value=0.0, step=10.0, key="prod_form_cost"
-            )
+            prod_cost = st.number_input("Cost (KES)", min_value=0.0, step=10.0,
+                                        key="prod_form_cost")
         with c5:
             cat_opts = ["—"] + [c["category_name"] for c in cats]
             prod_cat_choice = st.selectbox("Category", cat_opts, key="prod_form_category")
@@ -1608,11 +2261,10 @@ def page_products():
         prod_cat_id = None
         if prod_cat_choice != "—":
             prod_cat_id = next(
-                (c["category_id"] for c in cats if c["category_name"] == prod_cat_choice),
-                None,
+                (c["category_id"] for c in cats if c["category_name"] == prod_cat_choice), None
             )
 
-        if st.button("💾 Save Product", key="prod_form_save"):
+        if st.button("Save Product", key="prod_form_save", type="primary"):
             if not prod_name.strip():
                 st.error("Name required.")
             else:
@@ -1629,6 +2281,7 @@ def page_products():
                     (prod_name.strip(), prod_sku.strip() or None, prod_cat_id,
                      prod_price, prod_cost),
                 )
+                clear_caches()
                 log_action("PRODUCT_SAVE", "products", None, f"{prod_name}")
                 st.success(f"Saved {prod_name}.")
                 st.rerun()
@@ -1640,29 +2293,24 @@ def page_products():
             cols[0].write(c["category_name"])
             if IS_ADMIN:
                 with cols[1]:
-                    if confirm_delete(
-                        f"category '{c['category_name']}'",
-                        f"cat_{c['category_id']}",
-                    ):
-                        execute(
-                            "UPDATE products SET category_id = NULL WHERE category_id = %s;",
-                            (c["category_id"],),
-                        )
-                        execute(
-                            "DELETE FROM product_categories WHERE category_id = %s;",
-                            (c["category_id"],),
-                        )
+                    if confirm_delete(f"category '{c['category_name']}'",
+                                      f"cat_{c['category_id']}"):
+                        execute("UPDATE products SET category_id = NULL WHERE category_id = %s;",
+                                (c["category_id"],))
+                        execute("DELETE FROM product_categories WHERE category_id = %s;",
+                                (c["category_id"],))
+                        clear_caches()
                         st.rerun()
 
         st.markdown("---")
         new_cat = st.text_input("New category name", key="new_cat_name")
-        if st.button("➕ Add Category", key="add_cat_btn"):
+        if st.button("Add Category", key="add_cat_btn", type="primary"):
             if new_cat.strip():
                 execute(
-                    "INSERT INTO product_categories (category_name) "
-                    "VALUES (%s) ON CONFLICT DO NOTHING;",
+                    "INSERT INTO product_categories (category_name) VALUES (%s) ON CONFLICT DO NOTHING;",
                     (new_cat.strip(),),
                 )
+                clear_caches()
                 st.rerun()
 
     with tab3:
@@ -1677,11 +2325,10 @@ def page_products():
         sc = st.selectbox("School", list(school_map.keys()), key="pp_school")
         pc = st.selectbox("Product", list(prod_map.keys()), key="pp_prod")
         spp_category = st.text_input("Category", value="Default", key="pp_category")
-        spp_price = st.number_input(
-            "Override Price (KES)", min_value=0.0, step=10.0, key="pp_price"
-        )
+        spp_price = st.number_input("Override Price (KES)", min_value=0.0, step=10.0,
+                                    key="pp_price")
 
-        if st.button("💾 Save Price Override", key="pp_save"):
+        if st.button("Save Price Override", key="pp_save", type="primary"):
             execute(
                 """INSERT INTO school_product_prices
                        (school_id, category_name, product_id, price)
@@ -1711,12 +2358,9 @@ def page_products():
                 cols[3].write(f"KES {float(r['price']):,.0f}")
                 if IS_MANAGER:
                     with cols[4]:
-                        if confirm_delete(f"override", f"ovr_{r['id']}"):
-                            execute(
-                                "DELETE FROM school_product_prices "
-                                "WHERE school_product_price_id = %s;",
-                                (r["id"],),
-                            )
+                        if confirm_delete("override", f"ovr_{r['id']}"):
+                            execute("DELETE FROM school_product_prices WHERE school_product_price_id = %s;",
+                                    (r["id"],))
                             st.rerun()
 
 
@@ -1724,7 +2368,8 @@ def page_products():
 # PAGE: SCHOOLS
 # ============================================================
 def page_schools():
-    st.title("🏫 Schools")
+    st.markdown("# Schools")
+    st.caption("Schools you sell uniforms for.")
 
     schools = get_schools()
     for s in schools:
@@ -1734,18 +2379,18 @@ def page_schools():
             with cols[1]:
                 if confirm_delete(f"school '{s['school_name']}'", f"sch_{s['school_id']}"):
                     execute("DELETE FROM schools WHERE school_id = %s;", (s["school_id"],))
+                    clear_caches()
                     log_action("DELETE_SCHOOL", "schools", s["school_id"], "Deleted")
                     st.rerun()
 
     st.markdown("---")
-    st.subheader("Add School")
+    st.markdown("### Add School")
     name = st.text_input("School Name", key="new_school_name")
-    if st.button("💾 Save School", key="save_school_btn"):
+    if st.button("Save School", key="save_school_btn", type="primary"):
         if name.strip():
-            execute(
-                "INSERT INTO schools (school_name) VALUES (%s) ON CONFLICT DO NOTHING;",
-                (name.strip().upper(),),
-            )
+            execute("INSERT INTO schools (school_name) VALUES (%s) ON CONFLICT DO NOTHING;",
+                    (name.strip().upper(),))
+            clear_caches()
             st.rerun()
 
 
@@ -1753,7 +2398,8 @@ def page_schools():
 # PAGE: CUSTOMERS
 # ============================================================
 def page_customers():
-    st.title("🧑 Customers")
+    st.markdown("# Customers")
+    st.caption("Everyone who has bought uniforms from you.")
 
     rows = query(
         """SELECT c.customer_id, c.customer_name, c.phone,
@@ -1767,7 +2413,7 @@ def page_customers():
         st.info("No customers yet.")
         return
 
-    search = st.text_input("🔎 Search by name or phone", key="cust_search").strip().lower()
+    search = st.text_input("Search by name or phone", key="cust_search").strip().lower()
     filtered = [r for r in rows
                 if not search or search in f"{r['customer_name']} {r['phone'] or ''}".lower()]
 
@@ -1791,7 +2437,8 @@ def page_customers():
 # PAGE: FINANCIALS
 # ============================================================
 def page_financials():
-    st.title("💰 Financials")
+    st.markdown("# Financials")
+    st.caption("Revenue, costs, investor shares.")
 
     rev = query("SELECT COALESCE(SUM(total_amount),0) AS t FROM sales WHERE voided = FALSE;",
                 fetch="one")
@@ -1823,7 +2470,7 @@ def page_financials():
     c5.metric("Net", f"KES {net:,.0f}")
 
     st.markdown("---")
-    st.subheader("Investor Capital & Profit Share")
+    st.markdown("### Investor Capital & Profit Share")
     inv = query(
         """SELECT i.investor_name, COALESCE(SUM(ft.amount),0) AS capital
            FROM investors i
@@ -1841,7 +2488,7 @@ def page_financials():
         st.dataframe(df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
-    st.subheader("Record Transaction")
+    st.markdown("### Record Transaction")
     with st.form("fin_form", clear_on_submit=True):
         ttype = st.selectbox(
             "Type",
@@ -1852,7 +2499,7 @@ def page_financials():
         desc = st.text_input("Description", key="fin_desc")
         amt = st.number_input("Amount", min_value=0.0, step=100.0, key="fin_amt")
         term, year = current_term_year()
-        if st.form_submit_button("💾 Save"):
+        if st.form_submit_button("Save"):
             execute(
                 """INSERT INTO financial_transactions
                    (transaction_type, category, description, amount, term, year)
@@ -1867,7 +2514,8 @@ def page_financials():
 # PAGE: REPORTS
 # ============================================================
 def page_reports():
-    st.title("📊 Reports")
+    st.markdown("# Reports")
+    st.caption("Filter, analyze, and export sales.")
 
     tab1, tab2, tab3, tab4 = st.tabs(["Sales", "By School", "By Product", "Refunds"])
 
@@ -1897,37 +2545,32 @@ def page_reports():
             df = pd.DataFrame(rows)
             st.dataframe(df, use_container_width=True, hide_index=True)
 
+            dl1, dl2, _ = st.columns([1, 1, 3])
             try:
                 buf = io.BytesIO()
                 df.to_excel(buf, index=False, engine="openpyxl")
-                st.download_button(
-                    "⬇ Excel",
-                    data=buf.getvalue(),
-                    file_name=f"sales_{start}_{end}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="rep_excel_dl",
-                )
-            except Exception as e:
-                st.caption(f"⚠️ Excel export unavailable: {e}")
-
-            st.download_button(
-                "⬇ CSV",
-                df.to_csv(index=False),
-                "sales.csv",
-                key="rep_csv_dl",
-            )
+                with dl1:
+                    st.download_button(
+                        "Excel",
+                        data=buf.getvalue(),
+                        file_name=f"sales_{start}_{end}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="rep_excel_dl",
+                    )
+            except Exception:
+                pass
+            with dl2:
+                st.download_button("CSV", df.to_csv(index=False), "sales.csv",
+                                   key="rep_csv_dl")
 
             st.markdown("---")
-            st.subheader("Actions")
-            rid = st.selectbox(
-                "Sale to manage",
-                [r["sale_id"] for r in rows],
-                key="rep_manage_sale",
-            )
-            act1, act2, act3 = st.columns(3)
+            st.markdown("### Actions")
+            rid = st.selectbox("Sale to manage", [r["sale_id"] for r in rows],
+                               key="rep_manage_sale")
 
+            act1, act2, act3 = st.columns(3)
             with act1:
-                if st.button("🖨 Reprint", key=f"reprint_{rid}"):
+                if st.button("Reprint", key=f"reprint_{rid}"):
                     sale_data = next((r for r in rows if r["sale_id"] == rid), None)
                     if sale_data:
                         items = query(
@@ -1938,7 +2581,7 @@ def page_reports():
                                WHERE si.sale_id = %s;""",
                             (rid,),
                         )
-                        rcpt = {
+                        st.session_state.last_receipt = {
                             "sale_id": rid,
                             "date": sale_data["sale_date"],
                             "school": sale_data["school_name"],
@@ -1950,15 +2593,14 @@ def page_reports():
                             "payment_status": sale_data["payment_status"],
                             "voided": sale_data["voided"],
                         }
-                        st.session_state.last_receipt = rcpt
                         st.success("Receipt loaded — go to POS to print.")
 
             with act2:
-                if IS_MANAGER and st.button("↩ Refund", key=f"refund_{rid}"):
+                if IS_MANAGER and st.button("Refund", key=f"refund_{rid}"):
                     st.session_state["refund_sale"] = rid
 
             with act3:
-                if IS_MANAGER and st.button("🚫 Void", key=f"void_{rid}"):
+                if IS_MANAGER and st.button("Void", key=f"void_{rid}"):
                     execute(
                         """UPDATE sales SET voided = TRUE, voided_at = NOW(),
                                   voided_by = %s WHERE sale_id = %s;""",
@@ -1970,7 +2612,7 @@ def page_reports():
 
             if st.session_state.get("refund_sale") == rid:
                 st.markdown("---")
-                st.subheader(f"↩ Refund Sale #{rid}")
+                st.markdown(f"### Refund Sale #{rid}")
                 sale_items = query(
                     """SELECT si.sale_item_id, si.quantity, si.unit_price, p.product_name
                        FROM sale_items si JOIN products p ON p.product_id = si.product_id
@@ -1985,10 +2627,9 @@ def page_reports():
                         value=0, key=f"rq_{it['sale_item_id']}",
                     )
                     refund_qty[it["sale_item_id"]] = q
-
                 reason = st.text_input("Reason", key=f"rr_{rid}")
 
-                if st.button("✅ Confirm Refund", type="primary",
+                if st.button("Confirm Refund", type="primary",
                              key=f"refund_confirm_{rid}"):
                     total_refund = 0
                     refund_items = []
@@ -2057,8 +2698,8 @@ def page_reports():
 # PAGE: CLOSE DAY
 # ============================================================
 def page_close_day():
-    st.title("📅 Close Day (Z-Report)")
-    st.caption("Reconcile cash at end of day. Produces a permanent record.")
+    st.markdown("# Close Day")
+    st.caption("Reconcile cash at end of day.")
 
     close_date = st.date_input("Date to close", value=datetime.now().date(), key="close_date")
 
@@ -2096,7 +2737,6 @@ def page_close_day():
 
     expected_cash = cash_in - total_refunds
 
-    st.markdown("---")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Sales", f"{num_sales}")
     c2.metric("Total", f"KES {total_sales:,.0f}")
@@ -2110,33 +2750,30 @@ def page_close_day():
         st.info("No payments recorded.")
 
     st.markdown("---")
-    st.subheader("Cash Reconciliation")
+    st.markdown("### Cash Reconciliation")
     counted_cash = st.number_input(
-        "Actual cash counted in drawer (KES)",
+        "Actual cash counted (KES)",
         min_value=0.0, value=float(expected_cash), step=10.0,
         key="close_counted_cash",
     )
     variance = counted_cash - expected_cash
 
     if abs(variance) < 0.01:
-        st.success("✅ Cash matches exactly.")
+        st.success("Cash matches exactly.")
     elif variance > 0:
-        st.warning(f"⚠️ Over by KES {variance:,.0f}")
+        st.warning(f"Over by KES {variance:,.0f}")
     else:
-        st.error(f"❌ Short by KES {abs(variance):,.0f}")
+        st.error(f"Short by KES {abs(variance):,.0f}")
 
-    notes = st.text_area("Notes / reason for variance", key="close_notes")
+    notes = st.text_area("Notes", key="close_notes")
 
     existing = query("SELECT * FROM daily_closings WHERE closing_date = %s;",
                      (close_date,), fetch="one")
     if existing:
-        st.info(
-            f"Day already closed by **{existing['closed_by']}** at "
-            f"{existing['closed_at'].strftime('%d %b %Y %H:%M')} "
-            f"with variance KES {float(existing['variance']):,.0f}."
-        )
+        st.info(f"Day already closed by **{existing['closed_by']}** at "
+                f"{existing['closed_at'].strftime('%d %b %Y %H:%M')}.")
 
-    if st.button("✅ Close Day", type="primary", key="close_day_btn"):
+    if st.button("Close Day", type="primary", key="close_day_btn"):
         try:
             if existing:
                 execute(
@@ -2165,7 +2802,7 @@ def page_close_day():
             st.error(f"Failed: {e}")
 
     st.markdown("---")
-    st.subheader("Past Closings")
+    st.markdown("### Past Closings")
     past = query(
         """SELECT closing_date, total_sales, total_refunds, expected_cash,
                   counted_cash, variance, closed_by, closed_at
@@ -2179,7 +2816,8 @@ def page_close_day():
 # PAGE: TAILOR
 # ============================================================
 def page_tailor():
-    st.title("✂️ Tailor Production")
+    st.markdown("# Tailor Production")
+    st.caption("Record production runs. Stock updates automatically.")
 
     schools = get_schools()
     products = get_products()
@@ -2189,7 +2827,7 @@ def page_tailor():
     school_map = {s["school_name"]: s["school_id"] for s in schools}
     prod_map = {p["product_name"]: p["product_id"] for p in products}
 
-    with st.expander("➕ Record Production", expanded=False):
+    with st.expander("Record New Production", expanded=False):
         with st.form("tailor_form", clear_on_submit=True):
             c1, c2 = st.columns(2)
             school = c1.selectbox("School", list(school_map.keys()), key="tl_school")
@@ -2202,7 +2840,7 @@ def page_tailor():
             paid = c6.number_input("Amount Paid", min_value=0.0, step=100.0, key="tl_paid")
             notes = st.text_input("Notes", key="tl_notes")
             term, year = current_term_year()
-            if st.form_submit_button("💾 Save"):
+            if st.form_submit_button("Save"):
                 if tailor.strip():
                     execute(
                         """INSERT INTO tailor_production
@@ -2254,7 +2892,8 @@ def page_tailor():
 # PAGE: AUDIT
 # ============================================================
 def page_audit():
-    st.title("📜 Audit Log")
+    st.markdown("# Audit Log")
+    st.caption("Every action recorded with user, timestamp, details.")
 
     rows = query(
         """SELECT log_id, log_time, user_name, action, table_name, details
@@ -2266,7 +2905,7 @@ def page_audit():
         return
 
     c1, c2 = st.columns([2, 1])
-    search = c1.text_input("🔎 Search", key="audit_search").strip().lower()
+    search = c1.text_input("Search", key="audit_search").strip().lower()
     action_filter = c2.selectbox(
         "Action",
         ["All"] + sorted({r["action"] for r in rows}),
@@ -2291,44 +2930,35 @@ def page_audit():
                     execute("DELETE FROM audit_log WHERE log_id = %s;", (r["log_id"],))
                     st.rerun()
 
-    st.download_button(
-        "⬇ CSV",
-        pd.DataFrame(filtered).to_csv(index=False),
-        "audit.csv",
-        key="audit_csv_dl",
-    )
+    st.download_button("CSV", pd.DataFrame(filtered).to_csv(index=False),
+                       "audit.csv", key="audit_csv_dl")
 
 
 # ============================================================
 # PAGE: USERS
 # ============================================================
 def page_users():
-    st.title("👥 Users")
-    st.caption("Create, edit, deactivate users. Passwords are hashed with bcrypt.")
+    st.markdown("# Users")
+    st.caption("Manage cashiers, managers, admins.")
 
-    users = query(
-        "SELECT user_id, username, full_name, role, active FROM users ORDER BY username;"
-    )
+    users = query("SELECT user_id, username, full_name, role, active FROM users ORDER BY username;")
 
-    st.subheader("Existing Users")
+    st.markdown("### Existing Users")
     for u in users:
         cols = st.columns([2, 3, 2, 1, 1])
         cols[0].write(f"**{u['username']}**")
         cols[1].write(u["full_name"])
         cols[2].write(f"`{u['role']}`")
-        cols[3].write("✅" if u["active"] else "❌")
+        cols[3].write("Active" if u["active"] else "Inactive")
         with cols[4]:
             if u["username"] != USER["username"]:
-                if st.button("🗑", key=f"deluser_{u['user_id']}"):
-                    execute(
-                        "UPDATE users SET active = FALSE WHERE user_id = %s;",
-                        (u["user_id"],),
-                    )
+                if st.button("Del", key=f"deluser_{u['user_id']}"):
+                    execute("UPDATE users SET active = FALSE WHERE user_id = %s;", (u["user_id"],))
                     log_action("USER_DEACTIVATE", "users", u["user_id"], "Deactivated")
                     st.rerun()
 
     st.markdown("---")
-    st.subheader("Add User")
+    st.markdown("### Add User")
     with st.form("add_user_form", clear_on_submit=True):
         c1, c2 = st.columns(2)
         new_username = c1.text_input("Username", key="new_user_name")
@@ -2336,7 +2966,7 @@ def page_users():
         c3, c4 = st.columns(2)
         new_password = c3.text_input("Password", type="password", key="new_user_pw")
         new_role = c4.selectbox("Role", ["cashier", "manager", "admin"], key="new_user_role")
-        create_submitted = st.form_submit_button("💾 Create")
+        create_submitted = st.form_submit_button("Create")
 
     if create_submitted:
         if not new_username.strip() or not new_password:
@@ -2344,114 +2974,91 @@ def page_users():
         elif len(new_password) < 6:
             st.error("Password must be at least 6 characters.")
         else:
-            existing = query(
-                "SELECT user_id FROM users WHERE username = %s;",
-                (new_username.strip().lower(),),
-                fetch="one",
-            )
+            existing = query("SELECT user_id FROM users WHERE username = %s;",
+                             (new_username.strip().lower(),), fetch="one")
             if existing:
                 st.error("Username already exists.")
             else:
                 execute(
                     """INSERT INTO users (username, password_hash, full_name, role, active)
                        VALUES (%s, %s, %s, %s, TRUE);""",
-                    (
-                        new_username.strip().lower(),
-                        hash_password(new_password),
-                        new_full_name.strip() or new_username.strip(),
-                        new_role,
-                    ),
+                    (new_username.strip().lower(), hash_password(new_password),
+                     new_full_name.strip() or new_username.strip(), new_role),
                 )
-                log_action("USER_CREATE", "users", None,
-                           f"Created {new_username} ({new_role})")
-                st.success(f"User **{new_username}** created.")
+                log_action("USER_CREATE", "users", None, f"Created {new_username} ({new_role})")
+                st.success(f"User {new_username} created.")
                 st.rerun()
 
     st.markdown("---")
-    st.subheader("Change My Password")
-
+    st.markdown("### Change My Password")
     with st.form("change_password_form", clear_on_submit=True):
         current_password = st.text_input("Current password", type="password", key="chg_current")
         new_password_1 = st.text_input("New password", type="password", key="chg_new1")
         new_password_2 = st.text_input("Confirm new password", type="password", key="chg_new2")
-        change_submitted = st.form_submit_button("🔐 Change Password")
+        change_submitted = st.form_submit_button("Change Password")
 
     if change_submitted:
         if not current_password or not new_password_1 or not new_password_2:
-            st.error("All three fields are required.")
+            st.error("All fields required.")
         elif new_password_1 != new_password_2:
             st.error("New passwords do not match.")
         elif len(new_password_1) < 6:
-            st.error("New password must be at least 6 characters.")
+            st.error("Password must be at least 6 characters.")
         else:
-            db_row = query(
-                "SELECT password_hash FROM users WHERE user_id = %s;",
-                (USER["user_id"],),
-                fetch="one",
-            )
+            db_row = query("SELECT password_hash FROM users WHERE user_id = %s;",
+                           (USER["user_id"],), fetch="one")
             if not db_row:
-                st.error("Your user account was not found. Please log out and back in.")
+                st.error("Account not found. Please log out and back in.")
             elif not verify_password(current_password, db_row["password_hash"]):
                 st.error("Current password is incorrect.")
-                log_action("PASSWORD_CHANGE_FAILED", "users", USER["user_id"],
-                           "Wrong current password")
+                log_action("PASSWORD_CHANGE_FAILED", "users", USER["user_id"], "Wrong current")
             else:
-                execute(
-                    "UPDATE users SET password_hash = %s WHERE user_id = %s;",
-                    (hash_password(new_password_1), USER["user_id"]),
-                )
-                log_action("PASSWORD_CHANGE", "users", USER["user_id"],
-                           "Password changed")
-                st.success("✅ Password changed successfully. Use it next time you log in.")
+                execute("UPDATE users SET password_hash = %s WHERE user_id = %s;",
+                        (hash_password(new_password_1), USER["user_id"]))
+                log_action("PASSWORD_CHANGE", "users", USER["user_id"], "Password changed")
+                st.success("Password changed.")
 
     if IS_ADMIN:
         st.markdown("---")
-        st.subheader("Reset Another User's Password")
-        st.caption("Use this if a cashier or manager forgets their password.")
-
+        st.markdown("### Reset Another User's Password")
         other_users = [u for u in users if u["username"] != USER["username"] and u["active"]]
-
         if not other_users:
-            st.info("No other active users to reset.")
+            st.info("No other active users.")
         else:
-            user_options = {f"{u['username']} ({u['full_name']})": u["user_id"]
-                            for u in other_users}
-
+            user_options = {f"{u['username']} ({u['full_name']})": u["user_id"] for u in other_users}
             with st.form("admin_reset_form", clear_on_submit=True):
                 target_label = st.selectbox("User", list(user_options.keys()),
                                             key="admin_reset_target")
                 admin_new_pw = st.text_input("New password", type="password",
                                              key="admin_reset_pw")
-                admin_reset_submitted = st.form_submit_button("🔐 Reset")
-
+                admin_reset_submitted = st.form_submit_button("Reset")
             if admin_reset_submitted:
                 if len(admin_new_pw) < 6:
                     st.error("Password must be at least 6 characters.")
                 else:
                     target_id = user_options[target_label]
-                    execute(
-                        "UPDATE users SET password_hash = %s WHERE user_id = %s;",
-                        (hash_password(admin_new_pw), target_id),
-                    )
+                    execute("UPDATE users SET password_hash = %s WHERE user_id = %s;",
+                            (hash_password(admin_new_pw), target_id))
                     log_action("PASSWORD_RESET_BY_ADMIN", "users", target_id,
-                               f"Reset password for {target_label}")
-                    st.success(f"Password reset for **{target_label}**.")
+                               f"Reset for {target_label}")
+                    st.success(f"Password reset for {target_label}.")
 
 
 # ============================================================
 # ROUTER
 # ============================================================
 PAGES = {
+    "📊 Dashboard": page_dashboard,
     "🛒 Point of Sale": page_pos,
     "📋 Pending Pickup": page_pending,
+    "🧑 Customers": page_customers,
     "📦 Stock Management": page_stock,
     "👕 Products & Prices": page_products,
     "🏫 Schools": page_schools,
-    "🧑 Customers": page_customers,
+    "✂️ Tailor Production": page_tailor,
     "💰 Financials": page_financials,
     "📊 Reports": page_reports,
     "📅 Close Day": page_close_day,
-    "✂️ Tailor Production": page_tailor,
     "📜 Audit Log": page_audit,
     "👥 Users": page_users,
 }
