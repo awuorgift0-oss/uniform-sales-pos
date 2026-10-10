@@ -240,7 +240,6 @@ def setup_database():
             );
         """)
 
-        # Safe column additions
         for stmt in [
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2) NOT NULL DEFAULT 0;",
             "ALTER TABLE sales ADD COLUMN IF NOT EXISTS term VARCHAR(20);",
@@ -252,14 +251,12 @@ def setup_database():
         ]:
             cur.execute(stmt)
 
-        # Seed schools
         for s in ["LOVING BLOOMS SCHOOL", "WARIDI UTAWALA SCHOOL"]:
             cur.execute(
                 "INSERT INTO schools (school_name) VALUES (%s) ON CONFLICT (school_name) DO NOTHING;",
                 (s,),
             )
 
-        # Seed products
         products = [
             ("Skirt", 650), ("Blouse", 500), ("Socks", 200),
             ("Tracksuit Playgroup-PP2", 1600), ("Tracksuit G1-G6", 1800),
@@ -275,7 +272,6 @@ def setup_database():
                 (name, price),
             )
 
-        # Seed investors
         cur.execute(
             "INSERT INTO investors (investor_name, active) VALUES ('Gift', TRUE) "
             "ON CONFLICT (investor_name) DO UPDATE SET active = TRUE;"
@@ -288,7 +284,6 @@ def setup_database():
             "UPDATE investors SET active = FALSE WHERE investor_name NOT IN ('Gift','Ken');"
         )
 
-        # Initial capital
         for name, amount in [("Gift", 150000), ("Ken", 100000)]:
             cur.execute("SELECT investor_id FROM investors WHERE investor_name = %s;", (name,))
             row = cur.fetchone()
@@ -393,6 +388,7 @@ def init_state():
         "cart": [],
         "last_receipt": None,
         "page": "🛒 Point of Sale",
+        "confirm_undo": None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -456,23 +452,63 @@ def cart_total():
     return sum(item["quantity"] * item["unit_price"] for item in st.session_state.cart)
 
 
-def confirm_delete(label, key, danger="This cannot be undone."):
+def confirm_delete(
+    label,
+    key,
+    summary="This cannot be undone.",
+    cascade_options=None,
+    cascade_default=True,
+):
+    """
+    Universal delete confirmation with optional cascades.
+
+    cascade_options: list of dicts:
+        [{"label": "Also remove linked stock entry",
+          "sql": "DELETE FROM stock WHERE ...",
+          "params": (id,)}]
+    """
     state_key = f"cd_{key}"
+
     if state_key not in st.session_state:
         st.session_state[state_key] = False
-    if st.session_state[state_key]:
-        st.warning(f"⚠️ Delete **{label}**? {danger}")
-        c1, c2 = st.columns(2)
-        if c1.button("✅ Yes, delete", key=f"yes_{key}", type="primary"):
-            st.session_state[state_key] = False
-            return True
-        if c2.button("❌ Cancel", key=f"no_{key}"):
-            st.session_state[state_key] = False
+
+    # ---- Trigger ----
+    if not st.session_state[state_key]:
+        if st.button("🗑 Delete", key=f"ask_{key}"):
+            st.session_state[state_key] = True
             st.rerun()
         return False
-    if st.button("🗑 Delete", key=f"ask_{key}"):
-        st.session_state[state_key] = True
-        st.rerun()
+
+    # ---- Confirmation panel ----
+    st.error(f"⚠️ Delete **{label}**?\n\n{summary}")
+
+    cascades_to_run = []
+    if cascade_options:
+        st.markdown("**Also do:**")
+        for i, act in enumerate(cascade_options):
+            checked = st.checkbox(
+                act["label"],
+                value=cascade_default,
+                key=f"cascade_{key}_{i}",
+            )
+            if checked:
+                cascades_to_run.append(act)
+
+    c1, c2, _ = st.columns([1, 1, 3])
+    with c1:
+        if st.button("✅ Yes, delete", type="primary",
+                     key=f"yes_{key}", use_container_width=True):
+            for act in cascades_to_run:
+                try:
+                    execute(act["sql"], act.get("params", ()))
+                except Exception as e:
+                    st.warning(f"Cascade failed: {e}")
+            st.session_state[state_key] = False
+            return True
+    with c2:
+        if st.button("❌ Cancel", key=f"no_{key}", use_container_width=True):
+            st.session_state[state_key] = False
+            st.rerun()
     return False
 
 
@@ -486,7 +522,7 @@ with st.sidebar:
 
     pages = ["🛒 Point of Sale", "📋 Pending Pickup", "📦 Stock Management"]
     if IS_MANAGER:
-        pages += ["👕 Products & Prices", "🏫 Schools"]
+        pages += ["👕 Products & Prices", "🏫 Schools", "🧑 Customers"]
     if IS_ADMIN:
         pages += ["💰 Financials", "📊 Reports", "✂️ Tailor Production", "📜 Audit Log"]
 
@@ -831,19 +867,247 @@ def page_pos():
                     use_container_width=True,
                 )
 
+            # ---- UNDO LAST SALE ----
+            st.markdown("---")
+            undo_col, info_col = st.columns([1, 2])
+
+            with undo_col:
+                if st.button(
+                    "↩️ Undo This Sale",
+                    type="primary",
+                    use_container_width=True,
+                    key="undo_last_sale",
+                ):
+                    st.session_state["confirm_undo"] = r["sale_id"]
+
+            with info_col:
+                st.caption(
+                    f"This will delete sale **#{r['sale_id']}** and "
+                    f"restore the {len(r['items'])} item(s) back to stock."
+                )
+
+            if st.session_state.get("confirm_undo") == r["sale_id"]:
+                st.error(
+                    f"⚠️ Are you sure you want to **delete Sale #{r['sale_id']}** "
+                    f"(KES {r['total']:,.0f})? This cannot be undone."
+                )
+                c1, c2, _ = st.columns([1, 1, 3])
+                with c1:
+                    if st.button("✅ Yes, delete it", type="primary",
+                                 use_container_width=True, key="confirm_undo_yes"):
+                        try:
+                            execute("DELETE FROM sale_items WHERE sale_id = %s;",
+                                    (r["sale_id"],))
+                            execute("DELETE FROM sales WHERE sale_id = %s;",
+                                    (r["sale_id"],))
+                            log_action(
+                                "SALE_UNDONE", "sales", r["sale_id"],
+                                f"Undo sale #{r['sale_id']} (KES {r['total']:,.0f})",
+                            )
+                            st.session_state.last_receipt = None
+                            st.session_state["confirm_undo"] = None
+                            st.success(f"✅ Sale #{r['sale_id']} deleted. Stock restored.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Could not delete sale: {e}")
+                with c2:
+                    if st.button("❌ Cancel", use_container_width=True,
+                                 key="confirm_undo_no"):
+                        st.session_state["confirm_undo"] = None
+                        st.rerun()
+
 
 # ============================================================
 # PAGE: PENDING PICKUP
 # ============================================================
 def page_pending():
     st.title("📋 Pending Pickup")
-    st.caption("Items paid for but not yet collected by the customer.")
+    st.caption("Search a customer, tick items as you hand them over, then mark the sale as delivered.")
 
-    rows = query(
-        """SELECT si.sale_item_id, si.quantity, si.unit_price, si.line_total,
-                  si.issued, s.sale_id, s.sale_date, s.term, s.year,
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        search = st.text_input(
+            "🔎 Search by receipt #, phone, or customer name",
+            placeholder="e.g.  000042  or  0722123456  or  Mary",
+            key="pending_search",
+        ).strip().lower()
+    with col2:
+        st.write("")
+        st.write("")
+        show_completed = st.checkbox("Show delivered today", value=False)
+
+    # Summary
+    pending_count = query("SELECT COUNT(*) AS c FROM sale_items WHERE issued = FALSE;", fetch="one")
+    total_pending = int(pending_count["c"] or 0) if pending_count else 0
+
+    today_delivered = query(
+        """SELECT COUNT(*) AS c FROM audit_log
+           WHERE action = 'ITEM_ISSUED'
+             AND log_time::date = CURRENT_DATE;""",
+        fetch="one",
+    )
+    delivered_today = int(today_delivered["c"] or 0) if today_delivered else 0
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("📦 Total Pending Items", total_pending)
+    m2.metric("✅ Delivered Today", delivered_today)
+    m3.metric("🕐 Today", datetime.now().strftime("%d %b %Y"))
+
+    st.markdown("---")
+
+    sale_filter = ""
+    params = []
+    if search:
+        sale_filter = """
+            AND (
+                CAST(s.sale_id AS TEXT) ILIKE %s
+                OR COALESCE(c.customer_name, '') ILIKE %s
+                OR COALESCE(c.phone, '') ILIKE %s
+            )
+        """
+        like = f"%{search}%"
+        params = [like, like, like]
+
+    sales_rows = query(
+        f"""
+        SELECT DISTINCT s.sale_id, s.sale_date, s.term, s.year,
+               sch.school_name,
+               COALESCE(c.customer_name, 'Walk-in') AS customer_name,
+               c.phone
+        FROM sales s
+        JOIN schools sch ON sch.school_id = s.school_id
+        LEFT JOIN customers c ON c.customer_id = s.customer_id
+        JOIN sale_items si ON si.sale_id = s.sale_id
+        WHERE si.issued = FALSE
+        {sale_filter}
+        ORDER BY s.sale_date DESC
+        LIMIT 50;
+        """,
+        tuple(params),
+    )
+
+    if not sales_rows:
+        if search:
+            st.info(f"No pending sales match **'{search}'**.")
+        else:
+            st.success("🎉 No pending items — everything has been delivered.")
+    else:
+        st.subheader(f"📦 {len(sales_rows)} sale(s) with pending items")
+
+        for sale in sales_rows:
+            sid = sale["sale_id"]
+            with st.container():
+                head_cols = st.columns([2, 2, 2, 2, 1])
+                head_cols[0].markdown(f"### Sale #{sid:06d}")
+                head_cols[1].markdown(
+                    f"**{sale['sale_date'].strftime('%d %b %Y')}**  \n"
+                    f"<span style='color:#888;font-size:12px;'>"
+                    f"{sale['sale_date'].strftime('%H:%M')}</span>",
+                    unsafe_allow_html=True,
+                )
+                head_cols[2].markdown(
+                    f"**{sale['customer_name']}**  \n"
+                    f"<span style='color:#888;font-size:12px;'>"
+                    f"{sale['phone'] or 'no phone'}</span>",
+                    unsafe_allow_html=True,
+                )
+                head_cols[3].markdown(f"**{sale['school_name']}**")
+
+                items = query(
+                    """SELECT si.sale_item_id, si.quantity, si.unit_price,
+                              p.product_name
+                       FROM sale_items si
+                       JOIN products p ON p.product_id = si.product_id
+                       WHERE si.sale_id = %s AND si.issued = FALSE
+                       ORDER BY p.product_name;""",
+                    (sid,),
+                )
+
+                pending_total_qty = sum(int(i["quantity"]) for i in items)
+
+                with head_cols[4]:
+                    if st.button(
+                        "✅ Deliver All",
+                        key=f"deliver_all_{sid}",
+                        use_container_width=True,
+                        type="primary",
+                    ):
+                        for item in items:
+                            execute(
+                                "UPDATE sale_items SET issued = TRUE WHERE sale_item_id = %s;",
+                                (item["sale_item_id"],),
+                            )
+                            log_action(
+                                "ITEM_ISSUED", "sale_items", item["sale_item_id"],
+                                f"Issued {item['quantity']} × {item['product_name']} on sale #{sid}",
+                            )
+                        st.success(f"✅ Sale #{sid} fully delivered.")
+                        st.rerun()
+
+                st.caption(
+                    f"Pending: **{pending_total_qty}** item(s) · "
+                    f"Term {sale['term'] or '-'} · {sale['year'] or '-'}"
+                )
+
+                for item in items:
+                    item_cols = st.columns([4, 1, 1, 1])
+                    item_cols[0].write(f"**{item['product_name']}**")
+                    item_cols[1].write(f"Qty: **{item['quantity']}**")
+                    item_cols[2].write(f"KES {float(item['unit_price']):,.0f}")
+
+                    with item_cols[3]:
+                        ticked = st.checkbox(
+                            "Issued",
+                            key=f"tick_{item['sale_item_id']}",
+                            value=False,
+                        )
+                        if ticked:
+                            already = query(
+                                "SELECT issued FROM sale_items WHERE sale_item_id = %s;",
+                                (item["sale_item_id"],),
+                                fetch="one",
+                            )
+                            if already and not already["issued"]:
+                                execute(
+                                    "UPDATE sale_items SET issued = TRUE WHERE sale_item_id = %s;",
+                                    (item["sale_item_id"],),
+                                )
+                                log_action(
+                                    "ITEM_ISSUED", "sale_items", item["sale_item_id"],
+                                    f"Issued {item['quantity']} × {item['product_name']} on sale #{sid}",
+                                )
+                                st.rerun()
+
+                st.markdown(
+                    "<hr style='margin:14px 0 4px;border:none;"
+                    "border-top:1px solid #e5e9f0;'>",
+                    unsafe_allow_html=True,
+                )
+
+    if show_completed:
+        st.markdown("---")
+        st.subheader("✅ Delivered Today")
+        delivered = query(
+            """SELECT al.log_time, al.details, al.user_name
+               FROM audit_log al
+               WHERE al.action = 'ITEM_ISSUED'
+                 AND al.log_time::date = CURRENT_DATE
+               ORDER BY al.log_time DESC
+               LIMIT 100;"""
+        )
+        if delivered:
+            df = pd.DataFrame(delivered)
+            df.columns = ["Time", "Details", "By"]
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nothing delivered today yet.")
+
+    st.markdown("---")
+    all_pending = query(
+        """SELECT si.sale_item_id, s.sale_id, s.sale_date,
                   sch.school_name, c.customer_name, c.phone,
-                  p.product_name
+                  p.product_name, si.quantity, si.unit_price,
+                  si.line_total
            FROM sale_items si
            JOIN sales s ON s.sale_id = si.sale_id
            JOIN schools sch ON sch.school_id = s.school_id
@@ -852,56 +1116,12 @@ def page_pending():
            WHERE si.issued = FALSE
            ORDER BY s.sale_date DESC;"""
     )
-
-    if not rows:
-        st.success("🎉 No pending items — everything has been issued.")
-        return
-
-    total_qty = sum(int(r["quantity"]) for r in rows)
-    total_value = sum(float(r["line_total"]) for r in rows)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Pending Items", len(rows))
-    c2.metric("Total Units", total_qty)
-    c3.metric("Value", f"KES {total_value:,.0f}")
-
-    st.markdown("---")
-    search = st.text_input("🔎 Filter by customer, phone, or sale #",
-                           key="pending_filter").strip().lower()
-
-    for r in rows:
-        item_key = f"pending_{r['sale_item_id']}"
-        haystack = f"{r['sale_id']} {r['customer_name'] or ''} {r['phone'] or ''}".lower()
-        if search and search not in haystack:
-            continue
-
-        with st.container():
-            cols = st.columns([1, 2, 3, 2, 1, 1, 2])
-            cols[0].write(f"**#{r['sale_id']}**")
-            cols[1].write(r["sale_date"].strftime("%d %b %Y"))
-            cols[2].write(f"**{r['product_name']}**")
-            cols[3].write(
-                f"{r['customer_name'] or 'Walk-in'}"
-                + (f"  \n📞 {r['phone']}" if r["phone"] else "")
-            )
-            cols[4].write(f"×{r['quantity']}")
-            cols[5].write(f"KES {float(r['line_total']):,.0f}")
-            with cols[6]:
-                if st.button("✅ Mark as Issued", key=item_key, use_container_width=True):
-                    execute(
-                        "UPDATE sale_items SET issued = TRUE WHERE sale_item_id = %s;",
-                        (r["sale_item_id"],),
-                    )
-                    log_action("ITEM_ISSUED", "sale_items", r["sale_item_id"],
-                               f"Issued {r['quantity']} × {r['product_name']} on sale #{r['sale_id']}")
-                    st.success(f"Marked as issued: {r['product_name']}")
-                    st.rerun()
-            st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #eee;'>",
-                        unsafe_allow_html=True)
-
-    st.markdown("---")
-    df = pd.DataFrame(rows)
-    st.download_button("⬇ Download Pending List (CSV)",
-                       df.to_csv(index=False), "pending_pickup.csv")
+    if all_pending:
+        st.download_button(
+            "⬇ Download All Pending (CSV)",
+            data=pd.DataFrame(all_pending).to_csv(index=False),
+            file_name="pending_pickup.csv",
+        )
 
 
 # ============================================================
@@ -974,20 +1194,13 @@ def page_stock():
 
                 if IS_MANAGER:
                     with cols[6]:
-                        sold = query(
-                            """SELECT COALESCE(SUM(si.quantity),0) AS q
-                               FROM sale_items si
-                               JOIN sales s ON s.sale_id = si.sale_id
-                               JOIN stock st ON st.product_id = si.product_id
-                               WHERE st.stock_id = %s AND s.school_id = st.school_id;""",
-                            (sid,), fetch="one",
-                        )
-                        sold_qty = int(sold["q"] or 0) if sold else 0
-                        if sold_qty > 0:
-                            cols[6].caption("🔒 Sold")
-                        elif confirm_delete(
+                        if confirm_delete(
                             f"{e['quantity_brought']} × {e['product_name']}",
                             f"stock_{sid}",
+                            summary=(
+                                f"{e['quantity_brought']} × {e['product_name']} "
+                                f"on {e['date_added'].strftime('%d %b %Y')}"
+                            ),
                         ):
                             execute("DELETE FROM stock WHERE stock_id = %s;", (sid,))
                             log_action("DELETE_STOCK", "stock", sid,
@@ -1048,10 +1261,41 @@ def page_products():
                                  (SELECT COUNT(*) FROM school_product_prices WHERE product_id = %s) AS prices;""",
                             (pid, pid, pid), fetch="one",
                         )
-                        total_links = sum(int(v or 0) for v in linked.values()) if linked else 0
-                        if total_links > 0:
-                            cols[3].caption(f"🔒 {total_links} linked")
-                        elif confirm_delete(f"product '{p['product_name']}'", f"prod_{pid}"):
+
+                        cascade_opts = []
+                        if linked and int(linked["sales"]) > 0:
+                            cascade_opts.append({
+                                "label": f"⚠️ Also delete {int(linked['sales'])} linked sale item(s)",
+                                "sql": "DELETE FROM sale_items WHERE product_id = %s;",
+                                "params": (pid,),
+                            })
+                        if linked and int(linked["stock"]) > 0:
+                            cascade_opts.append({
+                                "label": f"Also delete {int(linked['stock'])} stock entry(ies)",
+                                "sql": "DELETE FROM stock WHERE product_id = %s;",
+                                "params": (pid,),
+                            })
+                        if linked and int(linked["prices"]) > 0:
+                            cascade_opts.append({
+                                "label": f"Also delete {int(linked['prices'])} price override(s)",
+                                "sql": "DELETE FROM school_product_prices WHERE product_id = %s;",
+                                "params": (pid,),
+                            })
+
+                        linked_summary = ""
+                        if linked:
+                            linked_summary = (
+                                f"Linked — sales: {int(linked['sales'])}, "
+                                f"stock: {int(linked['stock'])}, "
+                                f"prices: {int(linked['prices'])}"
+                            )
+
+                        if confirm_delete(
+                            f"product '{p['product_name']}'",
+                            f"prod_{pid}",
+                            summary=linked_summary,
+                            cascade_options=cascade_opts,
+                        ):
                             execute("DELETE FROM products WHERE product_id = %s;", (pid,))
                             log_action("DELETE_PRODUCT", "products", pid,
                                        f"Deleted product {p['product_name']}")
@@ -1124,8 +1368,11 @@ def page_products():
                 cols[3].write(f"KES {float(r['price']):,.0f}")
                 if IS_MANAGER:
                     with cols[4]:
-                        if confirm_delete(f"{r['product_name']} @ {r['school_name']}",
-                                          f"ovr_{r['id']}"):
+                        if confirm_delete(
+                            f"{r['product_name']} @ {r['school_name']}",
+                            f"ovr_{r['id']}",
+                            summary=f"KES {float(r['price']):,.0f} for {r['product_name']}",
+                        ):
                             execute("DELETE FROM school_product_prices WHERE school_product_price_id = %s;",
                                     (r["id"],))
                             log_action("DELETE_OVERRIDE", "school_product_prices", r["id"],
@@ -1157,10 +1404,54 @@ def page_schools():
                              (SELECT COUNT(*) FROM tailor_production WHERE school_id = %s) AS tailors;""",
                         (sid, sid, sid, sid), fetch="one",
                     )
-                    total_links = sum(int(v or 0) for v in linked.values()) if linked else 0
-                    if total_links > 0:
-                        cols[1].caption(f"🔒 {total_links} linked")
-                    elif confirm_delete(f"school '{s['school_name']}'", f"school_{sid}"):
+
+                    cascade_opts = []
+                    if linked and int(linked["sales"]) > 0:
+                        cascade_opts.append({
+                            "label": f"⚠️ Also delete {int(linked['sales'])} sale(s) and their items",
+                            "sql": """DELETE FROM sale_items WHERE sale_id IN
+                                     (SELECT sale_id FROM sales WHERE school_id = %s);""",
+                            "params": (sid,),
+                        })
+                        cascade_opts.append({
+                            "label": f"Also delete {int(linked['sales'])} sale header(s)",
+                            "sql": "DELETE FROM sales WHERE school_id = %s;",
+                            "params": (sid,),
+                        })
+                    if linked and int(linked["stock"]) > 0:
+                        cascade_opts.append({
+                            "label": f"Also delete {int(linked['stock'])} stock entry(ies)",
+                            "sql": "DELETE FROM stock WHERE school_id = %s;",
+                            "params": (sid,),
+                        })
+                    if linked and int(linked["prices"]) > 0:
+                        cascade_opts.append({
+                            "label": f"Also delete {int(linked['prices'])} price override(s)",
+                            "sql": "DELETE FROM school_product_prices WHERE school_id = %s;",
+                            "params": (sid,),
+                        })
+                    if linked and int(linked["tailors"]) > 0:
+                        cascade_opts.append({
+                            "label": f"Also delete {int(linked['tailors'])} tailor record(s)",
+                            "sql": "DELETE FROM tailor_production WHERE school_id = %s;",
+                            "params": (sid,),
+                        })
+
+                    linked_summary = ""
+                    if linked:
+                        linked_summary = (
+                            f"Linked — sales: {int(linked['sales'])}, "
+                            f"stock: {int(linked['stock'])}, "
+                            f"prices: {int(linked['prices'])}, "
+                            f"tailor: {int(linked['tailors'])}"
+                        )
+
+                    if confirm_delete(
+                        f"school '{s['school_name']}'",
+                        f"school_{sid}",
+                        summary=linked_summary,
+                        cascade_options=cascade_opts,
+                    ):
                         execute("DELETE FROM schools WHERE school_id = %s;", (sid,))
                         log_action("DELETE_SCHOOL", "schools", sid,
                                    f"Deleted school {s['school_name']}")
@@ -1181,6 +1472,71 @@ def page_schools():
             log_action("SCHOOL_ADD", "schools", None, name.strip())
             st.success("School saved.")
             st.rerun()
+
+
+# ============================================================
+# PAGE: CUSTOMERS
+# ============================================================
+def page_customers():
+    st.title("🧑 Customers")
+
+    rows = query(
+        """SELECT c.customer_id, c.customer_name, c.phone,
+                  (SELECT COUNT(*) FROM sales WHERE customer_id = c.customer_id) AS purchases
+           FROM customers c
+           ORDER BY c.customer_name;"""
+    )
+
+    if not rows:
+        st.info("No customers yet.")
+        return
+
+    search = st.text_input("🔎 Search by name or phone",
+                           key="cust_search").strip().lower()
+
+    filtered = []
+    for r in rows:
+        haystack = f"{r['customer_name']} {r['phone'] or ''}".lower()
+        if search and search not in haystack:
+            continue
+        filtered.append(r)
+
+    st.caption(f"Showing {len(filtered)} of {len(rows)} customers.")
+
+    for r in filtered:
+        cols = st.columns([3, 2, 2, 1])
+        cols[0].write(f"**{r['customer_name']}**")
+        cols[1].write(r["phone"] or "-")
+        cols[2].write(f"{r['purchases']} purchase(s)")
+
+        if IS_MANAGER:
+            with cols[3]:
+                cascade = []
+                if int(r["purchases"]) > 0:
+                    cascade.append({
+                        "label": f"⚠️ Also delete {int(r['purchases'])} linked sale(s) and items",
+                        "sql": """DELETE FROM sale_items WHERE sale_id IN
+                                 (SELECT sale_id FROM sales WHERE customer_id = %s);""",
+                        "params": (r["customer_id"],),
+                    })
+                    cascade.append({
+                        "label": "Also delete the sale header(s)",
+                        "sql": "DELETE FROM sales WHERE customer_id = %s;",
+                        "params": (r["customer_id"],),
+                    })
+
+                if confirm_delete(
+                    f"customer '{r['customer_name']}'",
+                    f"cust_{r['customer_id']}",
+                    summary=f"{r['purchases']} linked purchase(s)",
+                    cascade_options=cascade,
+                ):
+                    execute("DELETE FROM customers WHERE customer_id = %s;",
+                            (r["customer_id"],))
+                    log_action("DELETE_CUSTOMER", "customers", r["customer_id"],
+                               f"Deleted customer {r['customer_name']}")
+                    st.success("Customer deleted.")
+                    st.rerun()
 
 
 # ============================================================
@@ -1287,17 +1643,27 @@ def page_financials():
             cols[1].write(r["transaction_type"])
             cols[2].write(r["description"] or r["category"])
             cols[3].write(f"KES {float(r['amount']):,.0f}")
-            if IS_ADMIN and r["transaction_type"] != "Capital Contribution":
+            if IS_ADMIN:
                 with cols[4]:
-                    if confirm_delete(f"transaction #{r['id']}", f"fin_{r['id']}"):
+                    warning = ""
+                    if r["transaction_type"] == "Capital Contribution":
+                        warning = ("⚠️ This is a capital entry. Deleting it will affect "
+                                   "investor share calculations.")
+                    summary = (
+                        f"**{r['transaction_type']}** — KES {float(r['amount']):,.0f}"
+                        + (f"\n\n_{warning}_" if warning else "")
+                    )
+                    if confirm_delete(
+                        f"transaction #{r['id']}",
+                        f"fin_{r['id']}",
+                        summary=summary,
+                    ):
                         execute("DELETE FROM financial_transactions WHERE transaction_id = %s;",
                                 (r["id"],))
                         log_action("DELETE_FIN", "financial_transactions", r["id"],
                                    f"Deleted {r['transaction_type']} KES {float(r['amount']):,.0f}")
                         st.success("Transaction deleted.")
                         st.rerun()
-            elif r["transaction_type"] == "Capital Contribution":
-                cols[4].caption("🔒 Capital")
     else:
         st.info("No transactions yet.")
 
@@ -1351,9 +1717,17 @@ def page_reports():
                         if confirm_delete(
                             f"Sale #{rid}",
                             f"sale_{rid}",
-                            danger=f"KES {float(r['total_amount']):,.0f} — stock will be restored.",
+                            summary=(
+                                f"**KES {float(r['total_amount']):,.0f}** — "
+                                f"{r['customer_name'] or 'Walk-in'} on "
+                                f"{r['sale_date'].strftime('%d %b %Y')}"
+                            ),
+                            cascade_options=[{
+                                "label": "Also remove sale line items (restores stock)",
+                                "sql": "DELETE FROM sale_items WHERE sale_id = %s;",
+                                "params": (rid,),
+                            }],
                         ):
-                            execute("DELETE FROM sale_items WHERE sale_id = %s;", (rid,))
                             execute("DELETE FROM sales WHERE sale_id = %s;", (rid,))
                             log_action("DELETE_SALE", "sales", rid,
                                        f"Deleted sale #{rid} (KES {float(r['total_amount']):,.0f})")
@@ -1409,45 +1783,48 @@ def page_tailor():
     school_map = {s["school_name"]: s["school_id"] for s in schools}
     prod_map = {p["product_name"]: p["product_id"] for p in products}
 
-    with st.form("tailor_form", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        school = c1.selectbox("School", list(school_map.keys()))
-        product = c2.selectbox("Product", list(prod_map.keys()))
-        c3, c4 = st.columns(2)
-        tailor = c3.text_input("Tailor Name")
-        qty = c4.number_input("Quantity Produced", min_value=1, value=1, step=1)
-        c5, c6 = st.columns(2)
-        cost_item = c5.number_input("Cost per Item", min_value=0.0, step=10.0)
-        paid = c6.number_input("Amount Paid", min_value=0.0, step=100.0)
-        notes = st.text_input("Notes")
-        term, year = current_term_year()
-        submitted = st.form_submit_button("💾 Save Production")
-        if submitted:
-            if not tailor.strip():
-                st.error("Tailor name required.")
-            else:
-                execute(
-                    """INSERT INTO tailor_production
-                       (school_id, product_id, tailor_name, quantity_produced,
-                        cost_per_item, amount_paid, term, year, notes)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);""",
-                    (school_map[school], prod_map[product], tailor.strip(),
-                     qty, cost_item, paid, term, year, notes or None),
-                )
-                execute(
-                    """INSERT INTO stock (school_id, product_id, quantity_brought, term, year, unit_cost)
-                       VALUES (%s, %s, %s, %s, %s, %s);""",
-                    (school_map[school], prod_map[product], qty, term, year, cost_item),
-                )
-                log_action("TAILOR_PROD", "tailor_production", None,
-                           f"{qty} × {product} by {tailor}")
-                st.success("Production recorded and stock updated.")
-                st.rerun()
+    with st.expander("➕ Record New Production", expanded=False):
+        with st.form("tailor_form", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            school = c1.selectbox("School", list(school_map.keys()))
+            product = c2.selectbox("Product", list(prod_map.keys()))
+            c3, c4 = st.columns(2)
+            tailor = c3.text_input("Tailor Name")
+            qty = c4.number_input("Quantity Produced", min_value=1, value=1, step=1)
+            c5, c6 = st.columns(2)
+            cost_item = c5.number_input("Cost per Item", min_value=0.0, step=10.0)
+            paid = c6.number_input("Amount Paid", min_value=0.0, step=100.0)
+            notes = st.text_input("Notes")
+            term, year = current_term_year()
+            submitted = st.form_submit_button("💾 Save Production")
+            if submitted:
+                if not tailor.strip():
+                    st.error("Tailor name required.")
+                else:
+                    execute(
+                        """INSERT INTO tailor_production
+                           (school_id, product_id, tailor_name, quantity_produced,
+                            cost_per_item, amount_paid, term, year, notes)
+                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);""",
+                        (school_map[school], prod_map[product], tailor.strip(),
+                         qty, cost_item, paid, term, year, notes or None),
+                    )
+                    execute(
+                        """INSERT INTO stock (school_id, product_id, quantity_brought, term, year, unit_cost)
+                           VALUES (%s, %s, %s, %s, %s, %s);""",
+                        (school_map[school], prod_map[product], qty, term, year, cost_item),
+                    )
+                    log_action("TAILOR_PROD", "tailor_production", None,
+                               f"{qty} × {product} by {tailor}")
+                    st.success("Production recorded and stock updated.")
+                    st.rerun()
 
     st.markdown("---")
     st.subheader("Production History")
+
     rows = query(
-        """SELECT tp.production_id AS id, tp.production_date, s.school_name,
+        """SELECT tp.production_id AS id, tp.production_date, tp.school_id,
+                  tp.product_id, s.school_name,
                   p.product_name, tp.tailor_name, tp.quantity_produced,
                   tp.cost_per_item, tp.amount_paid, tp.notes
            FROM tailor_production tp
@@ -1455,30 +1832,74 @@ def page_tailor():
            JOIN products p ON p.product_id = tp.product_id
            ORDER BY tp.production_date DESC LIMIT 100;"""
     )
-    if rows:
-        for r in rows:
-            cols = st.columns([2, 2, 2, 1, 2, 1, 1])
-            cols[0].write(r["production_date"].strftime("%Y-%m-%d"))
-            cols[1].write(r["tailor_name"])
-            cols[2].write(f"{r['product_name']} ({r['school_name']})")
-            cols[3].write(f"×{r['quantity_produced']}")
-            cols[4].write(f"Cost/Item: {float(r['cost_per_item']):,.0f}")
-            cols[5].write(f"Paid: {float(r['amount_paid']):,.0f}")
-            if IS_MANAGER:
-                with cols[6]:
-                    if confirm_delete(
-                        f"production #{r['id']}",
-                        f"tailor_{r['id']}",
-                        danger="Stock added by this entry will NOT be removed automatically.",
-                    ):
-                        execute("DELETE FROM tailor_production WHERE production_id = %s;",
-                                (r["id"],))
-                        log_action("DELETE_TAILOR", "tailor_production", r["id"],
-                                   f"Deleted production #{r['id']}")
-                        st.success("Production record deleted.")
-                        st.rerun()
-    else:
+
+    if not rows:
         st.info("No production records yet.")
+        return
+
+    search = st.text_input(
+        "🔎 Filter by tailor, product, or school",
+        key="tailor_filter",
+    ).strip().lower()
+
+    for r in rows:
+        haystack = f"{r['tailor_name']} {r['product_name']} {r['school_name']}".lower()
+        if search and search not in haystack:
+            continue
+
+        cols = st.columns([2, 2, 2, 1, 2, 2, 1])
+        cols[0].write(r["production_date"].strftime("%Y-%m-%d"))
+        cols[1].write(r["tailor_name"])
+        cols[2].write(r["product_name"])
+        cols[3].write(f"×{r['quantity_produced']}")
+        cols[4].write(f"Cost/Item: {float(r['cost_per_item']):,.0f}")
+        cols[5].write(f"Paid: {float(r['amount_paid']):,.0f}")
+
+        stock_entry = query(
+            """SELECT stock_id, quantity_brought FROM stock
+               WHERE school_id = %s AND product_id = %s
+                 AND quantity_brought = %s AND unit_cost = %s
+               ORDER BY date_added DESC LIMIT 1;""",
+            (r["school_id"], r["product_id"],
+             r["quantity_produced"], r["cost_per_item"]),
+            fetch="one",
+        )
+
+        with cols[6]:
+            if IS_MANAGER:
+                cascade = []
+                if stock_entry:
+                    cascade.append({
+                        "label": f"Also delete linked stock entry ({stock_entry['quantity_brought']} units)",
+                        "sql": "DELETE FROM stock WHERE stock_id = %s;",
+                        "params": (stock_entry["stock_id"],),
+                    })
+
+                if confirm_delete(
+                    f"production #{r['id']}",
+                    f"tailor_{r['id']}",
+                    summary=(
+                        f"**{r['quantity_produced']} × {r['product_name']}** "
+                        f"by **{r['tailor_name']}** on "
+                        f"{r['production_date'].strftime('%d %b %Y')}"
+                    ),
+                    cascade_options=cascade,
+                ):
+                    execute(
+                        "DELETE FROM tailor_production WHERE production_id = %s;",
+                        (r["id"],),
+                    )
+                    log_action(
+                        "DELETE_TAILOR", "tailor_production", r["id"],
+                        f"Deleted production #{r['id']} ({r['quantity_produced']} × {r['product_name']})",
+                    )
+                    st.success("Production record deleted.")
+                    st.rerun()
+
+        st.markdown(
+            "<hr style='margin:4px 0;border:none;border-top:1px solid #f0f0f0;'>",
+            unsafe_allow_html=True,
+        )
 
 
 # ============================================================
@@ -1489,16 +1910,63 @@ def page_audit():
     st.caption("Every action is recorded with user, timestamp, and details.")
 
     rows = query(
-        """SELECT log_time, user_name, action, table_name, record_id, details
+        """SELECT log_id, log_time, user_name, action, table_name,
+                  record_id, details
            FROM audit_log
            ORDER BY log_time DESC LIMIT 200;"""
     )
-    if rows:
-        df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        st.download_button("⬇ Download CSV", df.to_csv(index=False), "audit_log.csv")
-    else:
+
+    if not rows:
         st.info("No activity yet.")
+        return
+
+    c1, c2, c3 = st.columns([2, 2, 1])
+    search = c1.text_input("🔎 Search", key="audit_search").strip().lower()
+    action_filter = c2.selectbox(
+        "Action",
+        ["All"] + sorted({r["action"] for r in rows}),
+        key="audit_action",
+    )
+    c3.write("")
+    c3.write("")
+    if IS_ADMIN and c3.button("🗑 Clear Old (>90 days)"):
+        execute("DELETE FROM audit_log WHERE log_time < NOW() - INTERVAL '90 days';")
+        log_action("AUDIT_CLEANUP", "audit_log", None, "Cleared logs older than 90 days")
+        st.success("Old logs cleared.")
+        st.rerun()
+
+    filtered = []
+    for r in rows:
+        if action_filter != "All" and r["action"] != action_filter:
+            continue
+        haystack = f"{r['user_name']} {r['action']} {r['details'] or ''}".lower()
+        if search and search not in haystack:
+            continue
+        filtered.append(r)
+
+    st.caption(f"Showing {len(filtered)} of {len(rows)} recent entries.")
+
+    for r in filtered:
+        cols = st.columns([2, 2, 2, 4, 1])
+        cols[0].write(r["log_time"].strftime("%Y-%m-%d %H:%M"))
+        cols[1].write(f"**{r['user_name']}**")
+        cols[2].write(f"`{r['action']}`")
+        cols[3].write(r["details"] or "-")
+
+        if IS_ADMIN:
+            with cols[4]:
+                if confirm_delete(
+                    f"log entry #{r['log_id']}",
+                    f"log_{r['log_id']}",
+                    summary=f"`{r['action']}` by {r['user_name']}",
+                ):
+                    execute("DELETE FROM audit_log WHERE log_id = %s;", (r["log_id"],))
+                    st.success("Log entry deleted.")
+                    st.rerun()
+
+    st.markdown("---")
+    df = pd.DataFrame(filtered)
+    st.download_button("⬇ Download CSV", df.to_csv(index=False), "audit_log.csv")
 
 
 # ============================================================
@@ -1510,6 +1978,7 @@ PAGES = {
     "📦 Stock Management": page_stock,
     "👕 Products & Prices": page_products,
     "🏫 Schools": page_schools,
+    "🧑 Customers": page_customers,
     "💰 Financials": page_financials,
     "📊 Reports": page_reports,
     "✂️ Tailor Production": page_tailor,
