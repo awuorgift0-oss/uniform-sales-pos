@@ -1,3 +1,6 @@
+# ============================================================
+# UNIFORM SALES POS — FULL SYSTEM
+# ============================================================
 import streamlit as st
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -49,7 +52,13 @@ st.markdown("""
         padding: 2px 0; font-size: 14px;
     }
     .receipt-divider { border-top: 1px dashed #999; margin: 8px 0; }
-    .cart-row { padding: 6px 0; border-bottom: 1px solid #eee; }
+    .login-box {
+        max-width: 400px; margin: 80px auto; padding: 40px;
+        background: white; border-radius: 14px;
+        box-shadow: 0 6px 24px rgba(11,31,58,0.15);
+    }
+    .login-box h1 { text-align: center; margin-bottom: 4px; }
+    .login-box p { text-align: center; color: #666; margin-bottom: 24px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -64,6 +73,7 @@ def get_connection():
             database=db["database"], user=db["user"],
             password=db["password"],
             sslmode=db.get("sslmode", "require"),
+            connect_timeout=15,
         )
     except Exception as e:
         st.error(f"Database connection failed: {e}")
@@ -72,7 +82,6 @@ def get_connection():
 
 @contextmanager
 def db_cursor(commit=False, dict_cursor=True):
-    """Context manager yielding a cursor. Auto-commits/closes."""
     conn = get_connection()
     if conn is None:
         yield None
@@ -115,12 +124,11 @@ def execute_returning(sql, params=None):
         if cur is None:
             return None
         cur.execute(sql, params or ())
-        row = cur.fetchone()
-        return row
+        return cur.fetchone()
 
 
 # ============================================================
-# SETUP (RUNS ONCE PER SESSION)
+# SETUP (RUNS ONCE)
 # ============================================================
 @st.cache_resource(show_spinner="Setting up database...")
 def setup_database():
@@ -223,9 +231,17 @@ def setup_database():
                 year INT,
                 notes VARCHAR(255)
             );
+            CREATE TABLE IF NOT EXISTS audit_log (
+                log_id SERIAL PRIMARY KEY,
+                log_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                action VARCHAR(50) NOT NULL,
+                table_name VARCHAR(100),
+                record_id INT,
+                user_name VARCHAR(100),
+                details TEXT
+            );
         """)
 
-        # Safe column additions
         for stmt in [
             "ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price NUMERIC(10,2) NOT NULL DEFAULT 0;",
             "ALTER TABLE sales ADD COLUMN IF NOT EXISTS term VARCHAR(20);",
@@ -237,14 +253,12 @@ def setup_database():
         ]:
             cur.execute(stmt)
 
-        # Seed schools
         for s in ["LOVING BLOOMS SCHOOL", "WARIDI UTAWALA SCHOOL"]:
             cur.execute(
                 "INSERT INTO schools (school_name) VALUES (%s) ON CONFLICT (school_name) DO NOTHING;",
                 (s,),
             )
 
-        # Seed products
         products = [
             ("Skirt", 650), ("Blouse", 500), ("Socks", 200),
             ("Tracksuit Playgroup-PP2", 1600), ("Tracksuit G1-G6", 1800),
@@ -260,7 +274,6 @@ def setup_database():
                 (name, price),
             )
 
-        # Seed investors
         cur.execute(
             "INSERT INTO investors (investor_name, active) VALUES ('Gift', TRUE) "
             "ON CONFLICT (investor_name) DO UPDATE SET active = TRUE;"
@@ -273,7 +286,6 @@ def setup_database():
             "UPDATE investors SET active = FALSE WHERE investor_name NOT IN ('Gift','Ken');"
         )
 
-        # Initial capital (only if no capital exists)
         for name, amount in [("Gift", 150000), ("Ken", 100000)]:
             cur.execute("SELECT investor_id FROM investors WHERE investor_name = %s;", (name,))
             row = cur.fetchone()
@@ -306,6 +318,70 @@ def setup_database():
 
 setup_database()
 
+
+# ============================================================
+# AUDIT LOGGING
+# ============================================================
+def log_action(action, table_name=None, record_id=None, details=None):
+    try:
+        user = st.session_state.get("user", {}).get("username", "system")
+        execute(
+            """INSERT INTO audit_log
+               (action, table_name, record_id, user_name, details)
+               VALUES (%s, %s, %s, %s, %s);""",
+            (action, table_name, record_id, user, details),
+        )
+    except Exception:
+        pass
+
+
+# ============================================================
+# AUTHENTICATION
+# ============================================================
+def get_users():
+    return {
+        "admin":    {"password": "admin2026",  "role": "admin",   "name": "Administrator"},
+        "cashier":  {"password": "cashier2026","role": "cashier", "name": "Cashier"},
+        "manager":  {"password": "manager2026","role": "manager", "name": "Manager"},
+    }
+
+
+def login_screen():
+    st.markdown("""
+    <div class="login-box">
+        <h1>🧾 Uniform Sales POS</h1>
+        <p>Please sign in to continue</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("🔐 Sign In", use_container_width=True)
+
+        if submitted:
+            users = get_users()
+            if username in users and users[username]["password"] == password:
+                st.session_state.user = {
+                    "username": username,
+                    "role": users[username]["role"],
+                    "name": users[username]["name"],
+                }
+                log_action("LOGIN", "users", None, f"{username} signed in")
+                st.rerun()
+            else:
+                st.error("Invalid username or password.")
+
+        st.caption("Default: admin / admin2026")
+
+
+if "user" not in st.session_state or not st.session_state.user:
+    login_screen()
+    st.stop()
+
+
 # ============================================================
 # SESSION STATE
 # ============================================================
@@ -321,6 +397,10 @@ def init_state():
 
 
 init_state()
+USER = st.session_state.user
+IS_ADMIN = USER["role"] == "admin"
+IS_MANAGER = USER["role"] in ("admin", "manager")
+
 
 # ============================================================
 # HELPERS
@@ -346,19 +426,16 @@ def get_products():
 
 
 def get_school_price(school_id, product_id, default_price):
-    """Return school-specific price if it exists."""
     row = query(
         """SELECT price FROM school_product_prices
            WHERE school_id = %s AND product_id = %s
            ORDER BY category_name LIMIT 1;""",
-        (school_id, product_id),
-        fetch="one",
+        (school_id, product_id), fetch="one",
     )
     return float(row["price"]) if row else float(default_price)
 
 
 def get_stock_available(school_id, product_id):
-    """Stock brought in minus stock sold (issued) for a school."""
     brought = query(
         "SELECT COALESCE(SUM(quantity_brought),0) AS q FROM stock WHERE school_id=%s AND product_id=%s;",
         (school_id, product_id), fetch="one",
@@ -377,27 +454,37 @@ def cart_total():
 
 
 # ============================================================
-# SIDEBAR NAVIGATION
+# SIDEBAR NAV
 # ============================================================
 with st.sidebar:
-    st.markdown("## 🧾 Uniform POS")
+    st.markdown(f"## 🧾 Uniform POS")
+    st.caption(f"👤 {USER['name']} · `{USER['role']}`")
     st.markdown("---")
-    pages = [
-        "🛒 Point of Sale",
-        "📦 Stock Management",
-        "👕 Products & Prices",
-        "🏫 Schools",
-        "💰 Financials",
-        "📊 Reports",
-        "✂️ Tailor Production",
-    ]
+
+    pages = ["🛒 Point of Sale", "📦 Stock Management"]
+    if IS_MANAGER:
+        pages += ["👕 Products & Prices", "🏫 Schools"]
+    if IS_ADMIN:
+        pages += ["💰 Financials", "📊 Reports", "✂️ Tailor Production", "📜 Audit Log"]
+
+    if st.session_state.page not in pages:
+        st.session_state.page = pages[0]
+
     st.session_state.page = st.radio(
         "Navigate", pages, index=pages.index(st.session_state.page)
     )
+
     st.markdown("---")
     term, year = current_term_year()
     st.caption(f"📅 {term} · {year}")
-    st.caption(f"🛒 Cart items: {len(st.session_state.cart)}")
+    st.caption(f"🛒 Cart: {len(st.session_state.cart)} items")
+
+    if st.button("🚪 Sign Out", use_container_width=True):
+        log_action("LOGOUT", "users", None, f"{USER['username']} signed out")
+        st.session_state.user = None
+        st.session_state.cart = []
+        st.session_state.last_receipt = None
+        st.rerun()
 
 
 # ============================================================
@@ -416,7 +503,6 @@ def page_pos():
 
     with col_left:
         st.subheader("Add Items")
-
         school_map = {s["school_name"]: s["school_id"] for s in schools}
         selected_school_name = st.selectbox("School", list(school_map.keys()))
         school_id = school_map[selected_school_name]
@@ -425,7 +511,6 @@ def page_pos():
         selected_product_name = st.selectbox("Product", list(product_map.keys()))
         product = product_map[selected_product_name]
 
-        # Resolve price
         effective_price = get_school_price(school_id, product["product_id"], product["price"])
         stock_avail = get_stock_available(school_id, product["product_id"])
 
@@ -447,7 +532,6 @@ def page_pos():
                     "Adjust quantity or add stock first."
                 )
             else:
-                # Check if same product+price already in cart
                 found = False
                 for item in st.session_state.cart:
                     if (item["school_id"] == school_id
@@ -484,7 +568,7 @@ def page_pos():
                     st.session_state.cart.pop(i)
                     st.rerun()
 
-            if st.button("🗑 Clear Cart", use_container_width=False):
+            if st.button("🗑 Clear Cart"):
                 st.session_state.cart = []
                 st.rerun()
 
@@ -499,7 +583,8 @@ def page_pos():
         payment_status = st.selectbox("Payment Status", ["Paid", "Pending", "Partial"])
 
         term, year = current_term_year()
-        term_input = st.selectbox("Term", ["Term 1", "Term 2", "Term 3"], index=["Term 1","Term 2","Term 3"].index(term))
+        term_input = st.selectbox("Term", ["Term 1", "Term 2", "Term 3"],
+                                  index=["Term 1", "Term 2", "Term 3"].index(term))
         year_input = st.number_input("Year", value=year, min_value=2020, max_value=2100)
 
         if st.button("✅ Complete Sale", type="primary", use_container_width=True):
@@ -507,7 +592,6 @@ def page_pos():
                 st.error("Cart is empty.")
                 return
 
-            # Re-validate stock
             for item in st.session_state.cart:
                 avail = get_stock_available(item["school_id"], item["product_id"])
                 if item["quantity"] > avail:
@@ -518,7 +602,6 @@ def page_pos():
                     return
 
             try:
-                # Customer
                 customer_id = None
                 if customer_name.strip():
                     row = execute_returning(
@@ -528,8 +611,6 @@ def page_pos():
                     )
                     customer_id = row["customer_id"]
 
-                # Sale (use first item's school; cart assumed single-school)
-                # If multiple schools, we still save to the first — better: enforce single school per cart
                 school_ids = {it["school_id"] for it in st.session_state.cart}
                 if len(school_ids) > 1:
                     st.error("Cart contains items from multiple schools. Please complete them separately.")
@@ -546,7 +627,6 @@ def page_pos():
                 )
                 sale_id = sale_row["sale_id"]
 
-                # Items
                 for item in st.session_state.cart:
                     execute(
                         """INSERT INTO sale_items
@@ -556,7 +636,9 @@ def page_pos():
                          item["unit_price"], item["quantity"] * item["unit_price"], True),
                     )
 
-                # Receipt snapshot
+                log_action("SALE", "sales", sale_id,
+                           f"{len(st.session_state.cart)} items, KES {total:,.0f}")
+
                 st.session_state.last_receipt = {
                     "sale_id": sale_id,
                     "date": sale_row["sale_date"],
@@ -576,7 +658,6 @@ def page_pos():
             except Exception as e:
                 st.error(f"Sale failed: {e}")
 
-        # Receipt preview
         if st.session_state.last_receipt:
             r = st.session_state.last_receipt
             st.markdown("---")
@@ -606,14 +687,10 @@ def page_pos():
             </div>
             """
             components.html(receipt_html, height=520, scrolling=True)
-            if st.button("🖨 Print Receipt"):
-                components.html(
-                    f"<script>window.print();</script>", height=0
-                )
 
 
 # ============================================================
-# PAGE: STOCK MANAGEMENT
+# PAGE: STOCK
 # ============================================================
 def page_stock():
     st.title("📦 Stock Management")
@@ -637,10 +714,11 @@ def page_stock():
 
         c1, c2, c3 = st.columns(3)
         qty = c1.number_input("Quantity Brought", min_value=1, value=1, step=1)
-        unit_cost = c2.number_input("Unit Cost (KES)", min_value=0.0, value=float(product["cost_price"] or 0), step=10.0)
+        unit_cost = c2.number_input("Unit Cost (KES)", min_value=0.0,
+                                    value=float(product["cost_price"] or 0), step=10.0)
         term, year = current_term_year()
         term_in = c3.selectbox("Term", ["Term 1", "Term 2", "Term 3"],
-                               index=["Term 1","Term 2","Term 3"].index(term))
+                               index=["Term 1", "Term 2", "Term 3"].index(term))
 
         if st.button("➕ Add Stock", use_container_width=True):
             execute(
@@ -648,6 +726,8 @@ def page_stock():
                    VALUES (%s, %s, %s, %s, %s, %s);""",
                 (school_id, product["product_id"], qty, term_in, year, unit_cost),
             )
+            log_action("STOCK_ADD", "stock", None,
+                       f"{qty} × {product_name} → {school_name}")
             st.success(f"Added {qty} × {product_name} to {school_name}.")
             st.rerun()
 
@@ -683,7 +763,7 @@ def page_stock():
 
 
 # ============================================================
-# PAGE: PRODUCTS & PRICES
+# PAGE: PRODUCTS
 # ============================================================
 def page_products():
     st.title("👕 Products & Prices")
@@ -717,6 +797,7 @@ def page_products():
                        SET price = EXCLUDED.price, cost_price = EXCLUDED.cost_price;""",
                     (name.strip(), price, cost),
                 )
+                log_action("PRODUCT_SAVE", "products", None, f"{name} @ {price}")
                 st.success(f"Saved {name}.")
                 st.rerun()
 
@@ -730,7 +811,7 @@ def page_products():
 
         sc = st.selectbox("School", list(school_map.keys()), key="pp_school")
         pc = st.selectbox("Product", list(prod_map.keys()), key="pp_prod")
-        cat = st.text_input("Category (e.g., 'Boys', 'Girls', 'Default')", value="Default")
+        cat = st.text_input("Category", value="Default")
         pr = st.number_input("Price", min_value=0.0, step=10.0)
 
         if st.button("💾 Save Price Override"):
@@ -742,6 +823,8 @@ def page_products():
                    DO UPDATE SET price = EXCLUDED.price;""",
                 (school_map[sc], cat.strip() or "Default", prod_map[pc], pr),
             )
+            log_action("PRICE_OVERRIDE", "school_product_prices", None,
+                       f"{pc} @ {sc} = {pr}")
             st.success("Price saved.")
             st.rerun()
 
@@ -775,6 +858,7 @@ def page_schools():
                 "INSERT INTO schools (school_name) VALUES (%s) ON CONFLICT (school_name) DO NOTHING;",
                 (name.strip().upper(),),
             )
+            log_action("SCHOOL_ADD", "schools", None, name.strip())
             st.success("School saved.")
             st.rerun()
 
@@ -785,15 +869,12 @@ def page_schools():
 def page_financials():
     st.title("💰 Financials")
 
-    # Revenue
     rev = query(
-        """SELECT COALESCE(SUM(total_amount),0) AS total FROM sales
-           WHERE payment_status = 'Paid';""",
+        "SELECT COALESCE(SUM(total_amount),0) AS total FROM sales WHERE payment_status = 'Paid';",
         fetch="one",
     )
     revenue = float(rev["total"] if rev else 0)
 
-    # Cost of goods sold
     cogs = query(
         """SELECT COALESCE(SUM(si.quantity * p.cost_price),0) AS total
            FROM sale_items si
@@ -804,14 +885,12 @@ def page_financials():
     )
     cogs_total = float(cogs["total"] if cogs else 0)
 
-    # Tailor costs
     tailor = query(
         "SELECT COALESCE(SUM(amount_paid),0) AS total FROM tailor_production;",
         fetch="one",
     )
     tailor_total = float(tailor["total"] if tailor else 0)
 
-    # Capital
     cap = query(
         """SELECT COALESCE(SUM(amount),0) AS total FROM financial_transactions
            WHERE transaction_type = 'Capital Contribution';""",
@@ -829,7 +908,7 @@ def page_financials():
     c4.metric("Net Profit", f"KES {net_profit:,.0f}")
 
     st.markdown("---")
-    st.subheader("Investor Capital")
+    st.subheader("Investor Capital & Profit Share")
     inv = query(
         """SELECT i.investor_name,
                   COALESCE(SUM(ft.amount),0) AS capital
@@ -852,7 +931,6 @@ def page_financials():
 
     st.markdown("---")
     st.subheader("Record Transaction")
-    schools = get_schools()
     with st.form("fin_form", clear_on_submit=True):
         ttype = st.selectbox("Type", ["Expense", "Capital Contribution", "Withdrawal", "Other Income"])
         category = st.text_input("Category", value="General")
@@ -868,9 +946,9 @@ def page_financials():
                 """INSERT INTO financial_transactions
                    (transaction_type, category, description, amount, investor_id, term, year)
                    VALUES (%s, %s, %s, %s, %s, %s, %s);""",
-                (ttype, category, desc, amount,
-                 inv_map.get(inv_choice), term, year),
+                (ttype, category, desc, amount, inv_map.get(inv_choice), term, year),
             )
+            log_action("FIN_TXN", "financial_transactions", None, f"{ttype} {amount}")
             st.success("Transaction recorded.")
             st.rerun()
 
@@ -979,12 +1057,13 @@ def page_tailor():
                     (school_map[school], prod_map[product], tailor.strip(),
                      qty, cost_item, paid, term, year, notes or None),
                 )
-                # Also add to stock
                 execute(
                     """INSERT INTO stock (school_id, product_id, quantity_brought, term, year, unit_cost)
                        VALUES (%s, %s, %s, %s, %s, %s);""",
                     (school_map[school], prod_map[product], qty, term, year, cost_item),
                 )
+                log_action("TAILOR_PROD", "tailor_production", None,
+                           f"{qty} × {product} by {tailor}")
                 st.success("Production recorded and stock updated.")
                 st.rerun()
 
@@ -1004,6 +1083,26 @@ def page_tailor():
 
 
 # ============================================================
+# PAGE: AUDIT LOG
+# ============================================================
+def page_audit():
+    st.title("📜 Audit Log")
+    st.caption("Every action is recorded with user, timestamp, and details.")
+
+    rows = query(
+        """SELECT log_time, user_name, action, table_name, record_id, details
+           FROM audit_log
+           ORDER BY log_time DESC LIMIT 200;"""
+    )
+    if rows:
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.download_button("⬇ Download CSV", df.to_csv(index=False), "audit_log.csv")
+    else:
+        st.info("No activity yet.")
+
+
+# ============================================================
 # ROUTER
 # ============================================================
 PAGES = {
@@ -1014,6 +1113,7 @@ PAGES = {
     "💰 Financials": page_financials,
     "📊 Reports": page_reports,
     "✂️ Tailor Production": page_tailor,
+    "📜 Audit Log": page_audit,
 }
 
 PAGES[st.session_state.page]()
